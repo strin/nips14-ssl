@@ -2,6 +2,8 @@ import numpy as np
 import anglepy.ndict as ndict
 
 # Pre-processing routines
+def Identity():
+    return lambda x : x, lambda x : x
 
 def PCA(x_in, cutoff=0.99, global_sd=True, toFloat=True):
     if toFloat: x_in = x_in / 256.

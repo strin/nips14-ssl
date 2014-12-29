@@ -3,6 +3,7 @@ sys.path.append('..')
 sys.path.append('../../data/')
 
 import os, numpy as np
+import scipy.io as sio
 import time
 
 import anglepy as ap
@@ -39,7 +40,9 @@ def main(n_z, n_hidden, dataset, seed, comment, gfx=True):
         # MNIST
         size = 28
         train_x, train_y, valid_x, valid_y, test_x, test_y = mnist.load_numpy(size)
+        f_enc, f_dec = pp.Identity()
         x = {'x': train_x.astype(np.float32)}
+        x_train = x
         x_valid = {'x': valid_x.astype(np.float32)}
         x_test = {'x': test_x.astype(np.float32)}
         L_valid = 1
@@ -50,6 +53,7 @@ def main(n_z, n_hidden, dataset, seed, comment, gfx=True):
         nonlinear = 'softplus'
         type_px = 'bernoulli'
         n_train = 50000
+        n_test = 10000
         n_batch = 1000
         colorImg = False
         bernoulli_x = True
@@ -338,8 +342,21 @@ def main(n_z, n_hidden, dataset, seed, comment, gfx=True):
                     _x, _, _z_confab = model.gen_xz({}, {}, n_batch=144)
                     x_samples = _z_confab['x']
                     image = paramgraphics.mat_to_img(f_dec(x_samples), dim_input, colorImg=colorImg)
-                    image.save(logdir+'samples'+tail, 'PNG')
+                    image.save(logdir+'samples-prior'+tail, 'PNG')
                     
+                    _x, _z, _z_confab = model.gen_xz(x_test, {}, n_test)
+                    x_samples = _z_confab['x']
+                    image = paramgraphics.mat_to_img(f_dec(x_samples[:, :144]), dim_input, colorImg=colorImg)
+                    image.save(logdir+'samples-posterior-'+tail, 'PNG')
+
+                    _x, _z_train, _z_confab = model.gen_xz(x_train, {}, n_train)
+                    x_samples = _z_confab['x']
+                    image = paramgraphics.mat_to_img(f_dec(x_samples[:, :144]), dim_input, colorImg=colorImg)
+                    image.save(logdir+'samples-train-posterior-'+tail, 'PNG')
+
+                    sio.savemat(logdir+'latent'+tail+'.mat', {'z_test': _z['z'], 'z_train': _z_train['z']})
+
+
                     #x_samples = _x['x']
                     #image = paramgraphics.mat_to_img(x_samples, dim_input, colorImg=colorImg)
                     #image.save(logdir+'samples2'+tail, 'PNG')
@@ -354,7 +371,7 @@ def main(n_z, n_hidden, dataset, seed, comment, gfx=True):
                 image = paramgraphics.mat_to_img(f_dec(w['out_w'][:]), dim_input, True, colorImg=colorImg)
                 image.save(logdir+'out_w'+tail, 'PNG')
 
-                _x, _, _z_confab = model.gen_xz({}, {}, n_batch=144)
+                _x, _z, _z_confab = model.gen_xz({}, {}, n_batch=144)
                 x_samples = f_dec(_z_confab['x'])
                 x_samples = np.minimum(np.maximum(x_samples, 0), 1)
                 image = paramgraphics.mat_to_img(x_samples, dim_input, colorImg=colorImg)

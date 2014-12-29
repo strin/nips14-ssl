@@ -344,18 +344,20 @@ def main(n_z, n_hidden, dataset, seed, comment, gfx=True):
                     image = paramgraphics.mat_to_img(f_dec(x_samples), dim_input, colorImg=colorImg)
                     image.save(logdir+'samples-prior'+tail, 'PNG')
                     
-                    _x, _z, _z_confab = model.gen_xz(x_test, {}, n_test)
-                    x_samples = _z_confab['x']
-                    image = paramgraphics.mat_to_img(f_dec(x_samples[:, :144]), dim_input, colorImg=colorImg)
-                    image.save(logdir+'samples-posterior-'+tail, 'PNG')
+                    def infer(data, n_batch=1000):
+                        size = data['x'].shape[1]
+                        res = np.zeros((n_hidden, size))
+                        for i in range(0, size, n_batch):
+                            x_batch = {'x': data['x'][:,i:i+n_batch].astype(np.float32)}
+                            _x, _z, _z_confab = model.gen_xz(x_batch, {}, n_batch)
+                            x_samples = _z_confab['x']
+                            res[:,i+n_batch] = _z['z']
+                        return res
 
-                    _x, _z_train, _z_confab = model.gen_xz(x_train, {}, n_train)
-                    x_samples = _z_confab['x']
-                    image = paramgraphics.mat_to_img(f_dec(x_samples[:, :144]), dim_input, colorImg=colorImg)
-                    image.save(logdir+'samples-train-posterior-'+tail, 'PNG')
+                    z_test = infer(x_test)
+                    z_train = infer(x_train)
 
-                    sio.savemat(logdir+'latent'+tail+'.mat', {'z_test': _z['z'], 'z_train': _z_train['z']})
-
+                    sio.savemat(logdir+'latent'+tail+'.mat', {'z_test': z_test, 'z_train': z_train})
 
                     #x_samples = _x['x']
                     #image = paramgraphics.mat_to_img(x_samples, dim_input, colorImg=colorImg)

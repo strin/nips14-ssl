@@ -346,12 +346,12 @@ def main(n_z, n_hidden, dataset, seed, comment, gfx=True):
                     
                     def infer(data, n_batch=1000):
                         size = data['x'].shape[1]
-                        res = np.zeros((n_hidden, size))
+                        res = np.zeros((n_z, size))
                         for i in range(0, size, n_batch):
                             x_batch = {'x': data['x'][:,i:i+n_batch].astype(np.float32)}
                             _x, _z, _z_confab = model.gen_xz(x_batch, {}, n_batch)
                             x_samples = _z_confab['x']
-                            res[:,i+n_batch] = _z['z']
+                            res[:,i:i+n_batch] = _z['z']
                         return res
 
                     z_test = infer(x_test)

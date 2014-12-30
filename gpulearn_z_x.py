@@ -351,7 +351,7 @@ def main(n_z, n_hidden, dataset, seed, comment, gfx=True):
                             x_batch = {'x': data['x'][:,i:i+n_batch].astype(np.float32)}
                             _x, _z, _z_confab = model.gen_xz(x_batch, {}, n_batch)
                             x_samples = _z_confab['x']
-                            res[:,i:i+n_batch] = _z['z']
+                            res[:,i:i+n_batch] = _z_confab['mean']
                         return res
 
                     z_test = infer(x_test)

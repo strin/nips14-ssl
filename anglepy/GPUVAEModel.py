@@ -43,8 +43,13 @@ class GPUVAEModel(object):
         self.dist_px = {}
         self.dist_pz = {}
         
-        logpx, logpz, logqz = self.factors(x, z, A)
-        
+        factors = self.factors(x, z, A)
+        if len(factors) == 3:
+            (logpx, logpz, logqz) = factors
+            cost = 0
+        else:
+            (logpx, logpz, logqz, cost) = factors
+
         if get_optimizer == None:
             def get_optimizer(w, g):
                 from collections import OrderedDict
@@ -54,7 +59,7 @@ class GPUVAEModel(object):
 
         # Log-likelihood lower bound
         self.f_L = theanofunction(allvars, [logpx, logpz, logqz])
-        L = (logpx + logpz - logqz).sum()
+        L = (logpx + logpz - logqz + cost).sum()
         g = T.grad(L, v.values() + w.values())
         gv, gw = dict(zip(v.keys(), g[0:len(v)])), dict(zip(w.keys(), g[len(v):len(v)+len(w)]))
         updates = get_optimizer(v, gv)

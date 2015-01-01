@@ -357,7 +357,7 @@ def main(n_z, n_hidden, dataset, seed, comment, gfx=True):
                     z_test = infer(x_test)
                     z_train = infer(x_train)
 
-                    sio.savemat(logdir+'latent'+tail+'.mat', {'z_test': z_test, 'z_train': z_train})
+                    sio.savemat(logdir+'latent.mat', {'z_test': z_test, 'z_train': z_train})
 
                     #x_samples = _x['x']
                     #image = paramgraphics.mat_to_img(x_samples, dim_input, colorImg=colorImg)

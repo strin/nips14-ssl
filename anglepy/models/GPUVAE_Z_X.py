@@ -94,7 +94,7 @@ class GPUVAE_Z_X(ap.GPUVAEModel):
         # function for distribution q(z|x)
         theanofunc = lazytheanofunc('warn', mode='FAST_RUN')
         self.dist_qz['z'] = theanofunc([x['x']] + [A], [q_mean, q_logvar])
-        self.dist_qz['hidden'] = theanofunc([x['x']] + [A], hidden_q)
+        self.dist_qz['hidden'] = theanofunc([x['x']] + [A], hidden_q[1:])
         
         # Compute virtual sample
         eps = rng.normal(size=q_mean.shape, dtype='float32')
@@ -191,7 +191,7 @@ class GPUVAE_Z_X(ap.GPUVAEModel):
         if x.has_key('x') and not z.has_key('z'):
 
             q_mean, q_logvar = self.dist_qz['z'](*([x['x']] + [A]))
-            q_hidden = self.dist_qz['z'](*([x['x']] + [A]))
+            q_hidden = self.dist_qz['hidden'](*([x['x']] + [A]))
 
             _z['mean'] = q_mean
             _z['logvar'] = q_logvar

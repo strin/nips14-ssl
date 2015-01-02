@@ -5,6 +5,7 @@ sys.path.append('../../data/')
 import os, numpy as np
 import scipy.io as sio
 import time
+import pdb
 
 import anglepy as ap
 import anglepy.paramgraphics as paramgraphics
@@ -15,6 +16,13 @@ import theano.tensor as T
 from collections import OrderedDict
 
 import preprocessing as pp
+
+def labelToMat(y):
+    label = np.unique(y)
+    newy = np.zeros((len(y), len(label)))
+    for i in range(len(y)):
+        newy[i, y[i]] = 1
+    return newy.T
 
 def main(n_z, n_hidden, dataset, seed, comment, gfx=True):
   
@@ -41,13 +49,14 @@ def main(n_z, n_hidden, dataset, seed, comment, gfx=True):
     size = 28
     train_x, train_y, valid_x, valid_y, test_x, test_y = mnist.load_numpy(size)
     f_enc, f_dec = pp.Identity()
-    x = {'x': train_x[:,:].astype(np.float32), 'y': train_y[:,:].astype(np.float32)}
+    x = {'x': train_x.astype(np.float32), 'y': labelToMat(train_y).astype(np.float32)}
     x_train = x
-    x_valid = {'x': valid_x.astype(np.float32), 'y': valid_y.astype(np.float32)}
-    x_test = {'x': test_x.astype(np.float32), 'y': test_y.astype(np.float32)}
+    x_valid = {'x': valid_x.astype(np.float32), 'y': labelToMat(valid_y).astype(np.float32)}
+    x_test = {'x': test_x.astype(np.float32), 'y': labelToMat(test_y).astype(np.float32)}
     L_valid = 1
     dim_input = (size,size)
     n_x = size*size
+    n_y = 10
     type_qz = 'gaussianmarg'
     type_pz = 'gaussianmarg'
     nonlinear = 'softplus'
@@ -254,9 +263,9 @@ def main(n_z, n_hidden, dataset, seed, comment, gfx=True):
   
     
   # Construct model
-  from anglepy.models import GPUVAE_Z_X
+  from anglepy.models import GPUVAE_MM_Z_X
   updates = get_adam_optimizer(learning_rate=3e-4, weight_decay=weight_decay)
-  model = GPUVAE_Z_X(updates, n_x, n_hidden, n_z, n_hidden[::-1], nonlinear, nonlinear, type_px, type_qz=type_qz, type_pz=type_pz, prior_sd=100, init_sd=1e-3)
+  model = GPUVAE_MM_Z_X(updates, n_x, n_y, n_hidden, n_z, n_hidden[::-1], nonlinear, nonlinear, type_px, type_qz=type_qz, type_pz=type_pz, prior_sd=100, init_sd=1e-3)
   
   if False:
     #dir = '/Users/dpkingma/results/learn_z_x_mnist_binarized_50-(500, 500)_mog_1412689061/'
@@ -349,7 +358,8 @@ def main(n_z, n_hidden, dataset, seed, comment, gfx=True):
             res = np.zeros((sum(n_hidden), size))
             predy = []
             for i in range(0, size, n_batch):
-              x_batch = {'x': data['x'][:,i:i+n_batch].astype(np.float32)}
+              idx_to = min(size, i+n_batch)
+              x_batch = ndict.getCols(data, i, idx_to)
               _x, _z, _z_confab = model.gen_xz(x_batch, {}, n_batch)
               x_samples = _z_confab['x']
               predy += list(_z_confab['predy'])
@@ -358,8 +368,8 @@ def main(n_z, n_hidden, dataset, seed, comment, gfx=True):
             return (res, predy)
 
           def evaluate(data, predy):
-            y = argmax(data['y'], axis=0)
-            return sum([int(yi != predy) for (yi, predy) in zip(y, predy)]) / float(len(predy))
+            y = np.argmax(data['y'], axis=0)
+            return sum([int(yi != py) for (yi, py) in zip(y, predy)]) / float(len(predy))
 
 
           (z_test, pred_test) = infer(x_test)
@@ -415,8 +425,8 @@ def epoch_vae_adam(model, x, n_batch=100, convertImgs=False, bernoulli_x=False, 
   def doEpoch():
     
     from collections import OrderedDict
-
-    n_tot = x.itervalues().next().shape[1]
+    
+    n_tot = x['x'].shape[1]
     idx_from = 0
     L = 0
     while idx_from < n_tot:

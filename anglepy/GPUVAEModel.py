@@ -1,4 +1,5 @@
 import numpy as np
+import pdb
 import theano
 import theano.tensor as T
 import math
@@ -58,8 +59,8 @@ class GPUVAEModel(object):
                 return updates
 
         # Log-likelihood lower bound
-        self.f_L = theanofunction(allvars, [logpx, logpz, logqz])
-        L = (logpx + logpz - logqz + cost).sum()
+        self.f_L = theanofunction(allvars, [logpx, logpz, logqz, cost])
+        L = (logpx + logpz - logqz - cost).sum()
         g = T.grad(L, v.values() + w.values())
         gv, gw = dict(zip(v.keys(), g[0:len(v)])), dict(zip(w.keys(), g[len(v):len(v)+len(w)]))
         updates = get_optimizer(v, gv)
@@ -69,8 +70,8 @@ class GPUVAEModel(object):
         #self.f_evalAndUpdate = theano.function(allvars, [logpx + logpz - logqz], updates=updates_w, mode=self.profmode)
         #theano.printing.debugprint(self.f_evalAndUpdate)
         
-        self.f_eval = theanofunction(allvars, [logpx + logpz - logqz])
-        self.f_evalAndUpdate = theanofunction(allvars, [logpx + logpz - logqz], updates=updates)
+        self.f_eval = theanofunction(allvars, [logpx + logpz - logqz - cost])
+        self.f_evalAndUpdate = theanofunction(allvars, [logpx + logpz - logqz - cost], updates=updates)
         
         
     # NOTE: IT IS ESSENTIAL THAT DICTIONARIES OF SYMBOLIC VARS AND RESPECTIVE NUMPY VALUES HAVE THE SAME KEYS

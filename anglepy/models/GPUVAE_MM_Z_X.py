@@ -1,4 +1,5 @@
 "max-margin regularization."
+import pdb
 import numpy as np
 import theano
 import theano.tensor as T
@@ -105,11 +106,12 @@ class GPUVAE_MM_Z_X(ap.GPUVAEModel):
         c = cast32(self.c)
         def activate():
             res = 0
+            lenw = len(v['W'].get_value())
             for (hi, hidden) in enumerate(hidden_q[1:]):
-                res += T.dot(hidden.T, v['W'][sum(self.n_hidden_q[:hi]):sum(self.n_hidden_q[:hi+1]),:])
-            res += T.dot(A.T, v['W'][-1,:])
+                res += T.dot(v['W'][sum(self.n_hidden_q[:hi]):sum(self.n_hidden_q[:hi+1]),:].T, hidden)
+            res += T.dot(v['W'][lenw-1:lenw,:].T, A)
             return res
-        predy = T.argmax(activate(), axis=1)
+        predy = T.argmax(activate(), axis=0)
 
         # function for distribution q(z|x)
         theanofunc = lazytheanofunc('warn', mode='FAST_RUN')
@@ -118,9 +120,9 @@ class GPUVAE_MM_Z_X(ap.GPUVAEModel):
         self.dist_qz['predy'] = theanofunc([x['x']] + [A], predy)
         
         # compute cost (posterior regularization).
-        true_resp = (activate() * x['y']).sum(axis=1, keepdims=True)
-        T.addbroadcast(true_resp, 1)
-        cost = c * (ell * (1-x['y']) + activate() - true_resp).max(axis=1).sum()
+        true_resp = (activate() * x['y']).sum(axis=0, keepdims=True)
+        T.addbroadcast(true_resp, 0)
+        cost = c * (ell * (1-x['y']) + activate() - true_resp).max(axis=0).sum()
 
         # Compute virtual sample
         eps = rng.normal(size=q_mean.shape, dtype='float32')
@@ -270,7 +272,7 @@ class GPUVAE_MM_Z_X(ap.GPUVAEModel):
         z = {}
 
         # Define observed variables 'x'
-        x = {'x': T.fmatrix('x')}
+        x = {'x': T.fmatrix('x'), 'y': T.fmatrix('y')}
         
         return x, z
     
@@ -284,7 +286,6 @@ class GPUVAE_MM_Z_X(ap.GPUVAEModel):
         v = {}
         #v['scale0'] = np.ones((self.n_hidden_q[0], 1))
         #v['scale1'] = np.ones((self.n_hidden_q[0], 1))
-        
         v['w0'] = rand((self.n_hidden_q[0], self.n_x))
         v['b0'] = rand((self.n_hidden_q[0], 1))
         for i in range(1, len(self.n_hidden_q)):

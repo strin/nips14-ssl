@@ -1,4 +1,5 @@
 import sys
+import signal
 sys.path.append('..')
 sys.path.append('../../data/')
 
@@ -6,6 +7,7 @@ import os, numpy as np
 import scipy.io as sio
 import time
 import pdb
+import color
 
 import anglepy as ap
 import anglepy.paramgraphics as paramgraphics
@@ -28,10 +30,11 @@ def main(n_z, n_hidden, dataset, seed, comment, gfx=True):
   
   # Initialize logdir
   import time
-  logdir = 'results/gpulearn_z_x_'+dataset+'_'+str(n_z)+'-'+str(n_hidden)+'_'+comment+'_'+str(int(time.time()))+'/'
+  logdir = 'results/gpulearn_mm_z_x_'+dataset+'_'+str(n_z)+'-'+str(n_hidden)+'_'+comment+'_'+str(int(time.time()))+'/'
   if not os.path.exists(logdir): os.makedirs(logdir)
   print 'logdir:', logdir
-  print 'gpulearn_z_x', n_z, n_hidden, dataset, seed
+  print 'gpulearn_mm_z_x'
+  color.printBlue('dataset = ' + str(dataset) + ' , n_z = ' + str(n_z) + ' , n_hidden = ' + str(n_hidden))
   with open(logdir+'hook.txt', 'a') as f:
     print >>f, 'learn_z_x', n_z, n_hidden, dataset, seed
   
@@ -264,7 +267,11 @@ def main(n_z, n_hidden, dataset, seed, comment, gfx=True):
     
   # Construct model
   from anglepy.models import GPUVAE_MM_Z_X
-  updates = get_adam_optimizer(learning_rate=3e-4, weight_decay=weight_decay)
+  if os.environ.has_key("stepsize"):
+    learning_rate = float(os.environ["stepsize"])
+  else:
+    learning_rate = 3e-4
+  updates = get_adam_optimizer(learning_rate=learning_rate, weight_decay=weight_decay)
   model = GPUVAE_MM_Z_X(updates, n_x, n_y, n_hidden, n_z, n_hidden[::-1], nonlinear, nonlinear, type_px, type_qz=type_qz, type_pz=type_pz, prior_sd=100, init_sd=1e-3)
   
   if False:
@@ -307,9 +314,6 @@ def main(n_z, n_hidden, dataset, seed, comment, gfx=True):
           print >>f, "Finished"
         exit()
     
-    print 'epoch', epoch, 't', t, 'll', ll, 'll_valid', ll_valid, ll_valid_stats
-    with open(logdir+'hook.txt', 'a') as f:
-      print >>f, 'epoch', epoch, 't', t, 'll', ll, 'll_valid', ll_valid, ll_valid_stats
 
     # Graphics
     if gfx and epoch%gfx_freq == 0:
@@ -375,7 +379,11 @@ def main(n_z, n_hidden, dataset, seed, comment, gfx=True):
           (z_test, pred_test) = infer(x_test)
           (z_train, pred_train) = infer(x_train)
 
+          print 'epoch', epoch, 't', t, 'll', ll, 'll_valid', ll_valid, ll_valid_stats
           print 'train_err = ', evaluate(x_train, pred_train), 'test_err = ', evaluate(x_test, pred_test)
+          with open(logdir+'hook.txt', 'a') as f:
+            print >>f, 'epoch', epoch, 't', t, 'll', ll, 'll_valid', ll_valid, ll_valid_stats
+            print >>f, 'train_err = ', evaluate(x_train, pred_train), 'test_err = ', evaluate(x_test, pred_test)
 
           sio.savemat(logdir+'latent.mat', {'z_test': z_test, 'z_train': z_train})
 

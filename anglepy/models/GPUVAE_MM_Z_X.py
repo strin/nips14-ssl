@@ -1,4 +1,5 @@
 "max-margin regularization."
+import sys, os
 import pdb
 import numpy as np
 import theano
@@ -6,6 +7,7 @@ import theano.tensor as T
 import collections as C
 import anglepy as ap
 import anglepy.ndict as ndict
+import color
 from anglepy.misc import lazytheanofunc
 
 import math, inspect
@@ -43,6 +45,12 @@ class GPUVAE_MM_Z_X(ap.GPUVAEModel):
         self.c = c
         self.ell = ell
         
+        if os.environ.has_key('c'):
+          self.c = float(os.environ['c'])
+        if os.environ.has_key('ell'):
+          self.ell = float(os.environ['ell'])
+        color.printBlue('c = ' + str(self.c) + ' , ell = ' + str(self.ell))
+
         # Init weights
         v, w = self.init_w(1e-2)
         for i in v: v[i] = shared32(v[i])

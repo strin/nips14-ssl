@@ -1,4 +1,5 @@
 import sys
+import signal
 sys.path.append('..')
 sys.path.append('../../data/')
 
@@ -6,6 +7,7 @@ import os, numpy as np
 import scipy.io as sio
 import time
 import pdb
+import color
 
 import anglepy as ap
 import anglepy.paramgraphics as paramgraphics
@@ -27,13 +29,15 @@ def labelToMat(y):
 def main(n_z, nn_hidden, dataset, seed, comment, gfx=True, encoder_index=0, str_t = ''):
   
   # Initialize logdir
+
   if encoder_index > 0:
       n_used_training = nn_hidden[encoder_index-1][0]
   n_hidden = nn_hidden[encoder_index]
   logdir = 'results/gpulearn_z_x_'+dataset+'_'+str(n_z)+'-'+str_t+'_'+comment+'_'+'/'
   if not os.path.exists(logdir): os.makedirs(logdir)
   print 'logdir:', logdir
-  print 'gpulearn_z_x', n_z, n_hidden, dataset, seed
+  print 'gpulearn_mm_z_x'
+  color.printBlue('dataset = ' + str(dataset) + ' , n_z = ' + str(n_z) + ' , n_hidden = ' + str(n_hidden))
   with open(logdir+'hook.txt', 'a') as f:
     print >>f, 'learn_z_x', n_z, n_hidden, dataset, seed
   
@@ -49,7 +53,7 @@ def main(n_z, nn_hidden, dataset, seed, comment, gfx=True, encoder_index=0, str_
     
     # MNIST
     size = 28
-    
+
     # Load data from previous encoder's output
     if encoder_index == 0:
         train_x, train_y, valid_x, valid_y, test_x, test_y = mnist.load_numpy(size)
@@ -293,7 +297,11 @@ def main(n_z, nn_hidden, dataset, seed, comment, gfx=True, encoder_index=0, str_
     
   # Construct model
   from anglepy.models import GPUVAE_MM_Z_X
-  updates = get_adam_optimizer(learning_rate=3e-4, weight_decay=weight_decay)
+  if os.environ.has_key("stepsize"):
+    learning_rate = float(os.environ["stepsize"])
+  else:
+    learning_rate = 3e-4
+  updates = get_adam_optimizer(learning_rate=learning_rate, weight_decay=weight_decay)
   model = GPUVAE_MM_Z_X(updates, n_x, n_y, n_hidden, n_z, n_hidden[::-1], nonlinear, nonlinear, type_px, type_qz=type_qz, type_pz=type_pz, prior_sd=100, init_sd=1e-3)
   
   if False:
@@ -336,9 +344,6 @@ def main(n_z, nn_hidden, dataset, seed, comment, gfx=True, encoder_index=0, str_
           print >>f, "Finished"
         exit()
     
-    print 'epoch', epoch, 't', t, 'll', ll, 'll_valid', ll_valid, ll_valid_stats
-    with open(logdir+'hook.txt', 'a') as f:
-      print >>f, 'epoch', epoch, 't', t, 'll', ll, 'll_valid', ll_valid, ll_valid_stats
 
     # Graphics
     if gfx and epoch%gfx_freq == 0:
@@ -381,7 +386,7 @@ def main(n_z, nn_hidden, dataset, seed, comment, gfx=True, encoder_index=0, str_
           x_samples = _z_confab['x']
           image = paramgraphics.mat_to_img(f_dec(x_samples), dim_input, colorImg=colorImg)
           image.save(logdir+'samples-prior'+tail, 'PNG')
-        
+          
         # Fixed bugs, this part should be independent from the above part
         if True:
           def infer(data, n_batch=1000):
@@ -407,7 +412,11 @@ def main(n_z, nn_hidden, dataset, seed, comment, gfx=True, encoder_index=0, str_
           (z_train, pred_train) = infer(x_train)
           (z_valid, pred_valid) = infer(x_valid)
 
+          print 'epoch', epoch, 't', t, 'll', ll, 'll_valid', ll_valid, ll_valid_stats
           print 'train_err = ', evaluate(x_train, pred_train), 'test_err = ', evaluate(x_test, pred_test)
+          with open(logdir+'hook.txt', 'a') as f:
+            print >>f, 'epoch', epoch, 't', t, 'll', ll, 'll_valid', ll_valid, ll_valid_stats
+            print >>f, 'train_err = ', evaluate(x_train, pred_train), 'test_err = ', evaluate(x_test, pred_test)
 
           sio.savemat(logdir+'encoder-'+str(encoder_index)+'-latent.mat', {'z_train': z_train, 'z_valid' : z_valid, 'z_test': z_test})
 
@@ -441,7 +450,7 @@ def main(n_z, nn_hidden, dataset, seed, comment, gfx=True, encoder_index=0, str_
   pass
 
 # Training loop for variational autoencoder
-def loop_va(doEpoch, hook, n_epochs=501):
+def loop_va(doEpoch, hook, n_epochs=101):
   
   t0 = time.time()
   for t in xrange(1, n_epochs):

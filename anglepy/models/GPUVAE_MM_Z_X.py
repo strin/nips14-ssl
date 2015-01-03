@@ -49,7 +49,9 @@ class GPUVAE_MM_Z_X(ap.GPUVAEModel):
           self.c = float(os.environ['c'])
         if os.environ.has_key('ell'):
           self.ell = float(os.environ['ell'])
-        color.printBlue('c = ' + str(self.c) + ' , ell = ' + str(self.ell))
+        if os.environ.has_key('Lambda'):
+          self.Lambda = float(os.environ['Lambda'])
+        color.printBlue('c = ' + str(self.c) + ' , ell = ' + str(self.ell) + ' , Lambda = ' + str(self.Lambda))
 
         # Init weights
         v, w = self.init_w(1e-2)
@@ -130,7 +132,7 @@ class GPUVAE_MM_Z_X(ap.GPUVAEModel):
         # compute cost (posterior regularization).
         true_resp = (activate() * x['y']).sum(axis=0, keepdims=True)
         T.addbroadcast(true_resp, 0)
-        cost = c * (ell * (1-x['y']) + activate() - true_resp).max(axis=0).sum()
+        cost = c * (ell * (1-x['y']) + activate() - true_resp).max(axis=0).sum() + self.Lambda * (v['W'] * v['W']).sum()
 
         # Compute virtual sample
         eps = rng.normal(size=q_mean.shape, dtype='float32')

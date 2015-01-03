@@ -7,7 +7,7 @@ if 'svhn' in sys.argv[1]:
 elif sys.argv[1] == 'mnist':
     stack_number = 2
     nn_hidden = ((900,),(625,))
-    n_z = (50,50)
+    n_z = (500,500)
     str_t = str(nn_hidden)+'_'+str(int(time.time()))
     for i in xrange(stack_number):
         gpulearn_mm_z_x_stacked.main(dataset='mnist', n_z=n_z[i], nn_hidden=nn_hidden, seed=0, comment='', gfx=True, encoder_index = i, str_t = str_t)

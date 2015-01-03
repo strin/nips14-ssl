@@ -53,13 +53,24 @@ def main(n_z, nn_hidden, dataset, seed, comment, gfx=True, encoder_index=0, str_
     # Load data from previous encoder's output
     if encoder_index == 0:
         train_x, train_y, valid_x, valid_y, test_x, test_y = mnist.load_numpy(size)
+        type_px = 'bernoulli'
+        bernoulli_x = True
     else:
         train_x, train_y, valid_x, valid_y, test_x, test_y = mnist.load_numpy(size)
         pre_x = sio.loadmat(logdir+'encoder-'+str(encoder_index-1)+'-latent.mat')
         train_x = pre_x['z_train'][:n_used_training,:]
         valid_x = pre_x['z_valid'][:n_used_training,:]
         test_x = pre_x['z_test'][:n_used_training,:]
-        
+        if True:
+            train_x = 1.0/(1.0 + np.exp(-train_x))
+            valid_x = 1.0/(1.0 + np.exp(-valid_x))
+            test_x = 1.0/(1.0 + np.exp(-test_x))
+            type_px = 'bernoulli'
+            bernoulli_x = True
+        else:
+            type_px = 'gaussian'
+            bernoulli_x = False
+            
     n_x = train_x.shape[0]
     
     f_enc, f_dec = pp.Identity()
@@ -79,14 +90,7 @@ def main(n_z, nn_hidden, dataset, seed, comment, gfx=True, encoder_index=0, str_
     n_y = 10
     type_qz = 'gaussianmarg'
     type_pz = 'gaussianmarg'
-    nonlinear = 'softplus'
-    if encoder_index == 0:
-        type_px = 'bernoulli'
-        bernoulli_x = True
-    else:
-        type_px = 'gaussian'
-        bernoulli_x = False
-    
+    nonlinear = 'softplus'    
     n_train = 50000
     n_test = 10000
     n_batch = 1000
@@ -310,7 +314,7 @@ def main(n_z, nn_hidden, dataset, seed, comment, gfx=True, encoder_index=0, str_
   # Progress hook
   def hook(epoch, t, ll):
     
-    if epoch%50 != 0: return
+    if epoch%10 != 0: return
     
     ll_valid, _ = model.est_loglik(x_valid, n_samples=L_valid, n_batch=n_batch, byteToFloat=byteToFloat)
     

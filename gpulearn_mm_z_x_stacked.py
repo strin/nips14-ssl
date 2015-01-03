@@ -94,7 +94,7 @@ def main(n_z, nn_hidden, dataset, seed, comment, gfx=True, encoder_index=0, str_
     n_y = 10
     type_qz = 'gaussianmarg'
     type_pz = 'gaussianmarg'
-    nonlinear = 'softplus'    
+    nonlinear = 'tanh'    
     n_train = 50000
     n_test = 10000
     n_batch = 1000

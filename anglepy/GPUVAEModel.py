@@ -48,8 +48,9 @@ class GPUVAEModel(object):
         if len(factors) == 3:
             (logpx, logpz, logqz) = factors
             cost = 0
+            sparsity_penalty = 0
         else:
-            (logpx, logpz, logqz, cost) = factors
+            (logpx, logpz, logqz, cost, sparsity_penalty) = factors
 
         if get_optimizer == None:
             def get_optimizer(w, g):
@@ -59,8 +60,8 @@ class GPUVAEModel(object):
                 return updates
 
         # Log-likelihood lower bound
-        self.f_L = theanofunction(allvars, [logpx, logpz, logqz, cost])
-        L = (logpx + logpz - logqz - cost).sum()
+        self.f_L = theanofunction(allvars, [logpx, logpz, logqz, cost, sparsity_penalty])
+        L = (logpx + logpz - logqz - cost - sparsity_penalty).sum()
         g = T.grad(L, v.values() + w.values())
         gv, gw = dict(zip(v.keys(), g[0:len(v)])), dict(zip(w.keys(), g[len(v):len(v)+len(w)]))
         updates = get_optimizer(v, gv)
@@ -70,8 +71,8 @@ class GPUVAEModel(object):
         #self.f_evalAndUpdate = theano.function(allvars, [logpx + logpz - logqz], updates=updates_w, mode=self.profmode)
         #theano.printing.debugprint(self.f_evalAndUpdate)
         
-        self.f_eval = theanofunction(allvars, [logpx + logpz - logqz - cost])
-        self.f_evalAndUpdate = theanofunction(allvars, [logpx + logpz - logqz - cost], updates=updates)
+        self.f_eval = theanofunction(allvars, [logpx + logpz - logqz])
+        self.f_evalAndUpdate = theanofunction(allvars, [logpx + logpz - logqz], updates=updates)
         
         
     # NOTE: IT IS ESSENTIAL THAT DICTIONARIES OF SYMBOLIC VARS AND RESPECTIVE NUMPY VALUES HAVE THE SAME KEYS

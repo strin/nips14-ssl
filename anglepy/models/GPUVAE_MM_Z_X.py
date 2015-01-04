@@ -33,7 +33,7 @@ class GPUVAE_MM_Z_X(ap.GPUVAEModel):
         self.n_hidden_q = n_hidden_q
         self.n_z = n_z
         self.n_hidden_p = n_hidden_p
-        self.dropout = False
+        self.dropout = True
         self.nonlinear_q = nonlinear_q
         self.nonlinear_p = nonlinear_p
         self.type_px = type_px

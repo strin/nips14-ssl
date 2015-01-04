@@ -24,7 +24,7 @@ Fully connected deep variational auto-encoder (VAE_Z_X)
 
 class GPUVAE_MM_Z_X(ap.GPUVAEModel):
     
-    def __init__(self, get_optimizer, n_x, n_y, n_hidden_q, n_z, n_hidden_p, nonlinear_q='tanh', nonlinear_p='tanh', type_px='bernoulli', type_qz='gaussianmarg', type_pz='gaussianmarg', prior_sd=1, init_sd=1e-2, var_smoothing=0, n_mixture=50, c=1, ell=10, average_activation = 0.1, sparsity_weight = 3):
+    def __init__(self, get_optimizer, n_x, n_y, n_hidden_q, n_z, n_hidden_p, nonlinear_q='tanh', nonlinear_p='tanh', type_px='bernoulli', type_qz='gaussianmarg', type_pz='gaussianmarg', prior_sd=1, init_sd=1e-2, var_smoothing=0, n_mixture=50, c=10, ell=1, average_activation = 0.1, sparsity_weight = 3):
         self.constr = (__name__, inspect.stack()[0][3], locals())
         self.n_x = n_x
         self.n_y = n_y
@@ -130,7 +130,7 @@ class GPUVAE_MM_Z_X(ap.GPUVAEModel):
         # compute cost (posterior regularization).
         true_resp = (activate() * x['y']).sum(axis=0, keepdims=True)
         T.addbroadcast(true_resp, 0)
-        cost = c * (ell * (1-x['y']) + activate() - true_resp).max(axis=0).sum()
+        cost = 1e-4 * (v['W']*v['W']).sum() + c * (ell * (1-x['y']) + activate() - true_resp).max(axis=0).sum()
         
         # compute the sparsity penalty
         sparsity_penalty = 0

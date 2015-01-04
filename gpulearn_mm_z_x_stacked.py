@@ -26,18 +26,18 @@ def labelToMat(y):
         newy[i, y[i]] = 1
     return newy.T
 
-def main(n_z, nn_hidden, dataset, seed, comment, gfx=True, encoder_index=0, str_t = ''):
+def main(n_z, c, nn_hidden, dataset, seed, comment, gfx=True, encoder_index=0, str_t = ''):
   
   # Initialize logdir
 
   if encoder_index > 0:
-      n_used_training = nn_hidden[encoder_index-1][0]
+      n_used_training = nn_hidden[encoder_index-1][-1]
   n_hidden = nn_hidden[encoder_index]
   logdir = 'results/gpulearn_z_x_'+dataset+'_'+str(n_z)+'-'+str_t+'_'+comment+'_'+'/'
   if not os.path.exists(logdir): os.makedirs(logdir)
   print 'logdir:', logdir
   print 'gpulearn_mm_z_x'
-  color.printBlue('dataset = ' + str(dataset) + ' , n_z = ' + str(n_z) + ' , n_hidden = ' + str(n_hidden))
+  color.printBlue('dataset = ' + str(dataset) + ' , n_z = ' + str(n_z) + ' , n_hidden = ' + str(n_hidden) + ' , c = ' + str(c))
   with open(logdir+'hook.txt', 'a') as f:
     print >>f, 'learn_z_x', n_z, n_hidden, dataset, seed
   
@@ -60,11 +60,15 @@ def main(n_z, nn_hidden, dataset, seed, comment, gfx=True, encoder_index=0, str_
         type_px = 'bernoulli'
         bernoulli_x = True
     else:
-        train_x, train_y, valid_x, valid_y, test_x, test_y = mnist.load_numpy(size)
+        train_x1, train_y, valid_x1, valid_y, test_x1, test_y = mnist.load_numpy(size)
         pre_x = sio.loadmat(logdir+'encoder-'+str(encoder_index-1)+'-latent.mat')
-        train_x = pre_x['z_train'][:n_used_training,:]
-        valid_x = pre_x['z_valid'][:n_used_training,:]
-        test_x = pre_x['z_test'][:n_used_training,:]
+        train_x = pre_x['z_train'][-n_used_training:,:]
+        valid_x = pre_x['z_valid'][-n_used_training:,:]
+        test_x = pre_x['z_test'][-n_used_training:,:]
+        train_x = hstack((train_x, train_x1))
+        valid_x = hstack((valid_x, valid_x1))
+        test_x = hstack((test_x, test_x1))
+        
         if True:
             train_x = 1.0/(1.0 + np.exp(-train_x))
             valid_x = 1.0/(1.0 + np.exp(-valid_x))
@@ -89,7 +93,7 @@ def main(n_z, nn_hidden, dataset, seed, comment, gfx=True, encoder_index=0, str_
         dim_input = (size,size)
     else:
         dim_input = (int(np.sqrt(n_x)), int(np.sqrt(n_x)))
-        assert(int(np.sqrt(n_x))**2 == n_x)
+        #assert(int(np.sqrt(n_x))**2 == n_x)
         
     n_y = 10
     type_qz = 'gaussianmarg'
@@ -302,7 +306,7 @@ def main(n_z, nn_hidden, dataset, seed, comment, gfx=True, encoder_index=0, str_
   else:
     learning_rate = 3e-4
   updates = get_adam_optimizer(learning_rate=learning_rate, weight_decay=weight_decay)
-  model = GPUVAE_MM_Z_X(updates, n_x, n_y, n_hidden, n_z, n_hidden[::-1], nonlinear, nonlinear, type_px, type_qz=type_qz, type_pz=type_pz, prior_sd=100, init_sd=1e-3)
+  model = GPUVAE_MM_Z_X(updates, n_x, n_y, n_hidden, n_z, n_hidden[::-1], nonlinear, nonlinear, type_px, type_qz=type_qz, type_pz=type_pz, prior_sd=100, init_sd=1e-3, c = c)
   
   if False:
     #dir = '/Users/dpkingma/results/learn_z_x_mnist_binarized_50-(500, 500)_mog_1412689061/'
@@ -414,11 +418,12 @@ def main(n_z, nn_hidden, dataset, seed, comment, gfx=True, encoder_index=0, str_
 
           print 'epoch', epoch, 't', t, 'll', ll, 'll_valid', ll_valid, ll_valid_stats
           print 'train_err = ', evaluate(x_train, pred_train), 'test_err = ', evaluate(x_test, pred_test)
-          with open(logdir+'hook.txt', 'a') as f:
-            print >>f, 'epoch', epoch, 't', t, 'll', ll, 'll_valid', ll_valid, ll_valid_stats
-            print >>f, 'train_err = ', evaluate(x_train, pred_train), 'test_err = ', evaluate(x_test, pred_test)
+          if epoch%500==0:
+              with open(logdir+'hook.txt', 'a') as f:
+                print >>f, 'epoch', epoch, 't', t, 'll', ll, 'll_valid', ll_valid, ll_valid_stats
+                print >>f, 'train_err = ', evaluate(x_train, pred_train), 'test_err = ', evaluate(x_test, pred_test)
 
-          sio.savemat(logdir+'encoder-'+str(encoder_index)+'-latent.mat', {'z_train': z_train, 'z_valid' : z_valid, 'z_test': z_test})
+          sio.savemat(logdir+'encoder-'+str(encoder_index)+'-epoch-'+str(epoch)+'-latent.mat', {'z_train': z_train, 'z_valid' : z_valid, 'z_test': z_test})
 
           #x_samples = _x['x']
           #image = paramgraphics.mat_to_img(x_samples, dim_input, colorImg=colorImg)
@@ -450,7 +455,7 @@ def main(n_z, nn_hidden, dataset, seed, comment, gfx=True, encoder_index=0, str_
   pass
 
 # Training loop for variational autoencoder
-def loop_va(doEpoch, hook, n_epochs=101):
+def loop_va(doEpoch, hook, n_epochs=1001):
   
   t0 = time.time()
   for t in xrange(1, n_epochs):

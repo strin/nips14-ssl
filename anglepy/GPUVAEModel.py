@@ -70,8 +70,8 @@ class GPUVAEModel(object):
         #self.f_evalAndUpdate = theano.function(allvars, [logpx + logpz - logqz], updates=updates_w, mode=self.profmode)
         #theano.printing.debugprint(self.f_evalAndUpdate)
         
-        self.f_eval = theanofunction(allvars, [logpx + logpz - logqz - cost])
-        self.f_evalAndUpdate = theanofunction(allvars, [logpx + logpz - logqz - cost], updates=updates)
+        self.f_eval = theanofunction(allvars, [logpx + logpz - logqz])
+        self.f_evalAndUpdate = theanofunction(allvars, [logpx + logpz - logqz], updates=updates)
         
         
     # NOTE: IT IS ESSENTIAL THAT DICTIONARIES OF SYMBOLIC VARS AND RESPECTIVE NUMPY VALUES HAVE THE SAME KEYS

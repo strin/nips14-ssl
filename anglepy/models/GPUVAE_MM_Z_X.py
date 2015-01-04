@@ -49,15 +49,18 @@ class GPUVAE_MM_Z_X(ap.GPUVAEModel):
           self.c = float(os.environ['c'])
         if os.environ.has_key('ell'):
           self.ell = float(os.environ['ell'])
-        if os.environ.has_key('Lambda'):
-          self.Lambda = float(os.environ['Lambda'])
-        color.printBlue('c = ' + str(self.c) + ' , ell = ' + str(self.ell) + ' , Lambda = ' + str(self.Lambda))
+        self.sv = 0
+        if os.environ.has_key('sv'):
+          self.sv = int(os.environ['sv'])
+          color.printBlue('apply supervision: ' + str(self.sv))
+
+        color.printBlue('c = ' + str(self.c) + ' , ell = ' + str(self.ell))
 
         # Init weights
         v, w = self.init_w(1e-2)
         for i in v: v[i] = shared32(v[i])
         for i in w: w[i] = shared32(w[i])
-        W = shared32(np.zeros((sum(n_hidden_q)+1, n_y)))
+        W = shared32(np.zeros((sum(n_hidden_q[self.sv:])+1, n_y)))
 
         self.v = v
         self.v['W'] = W
@@ -113,12 +116,13 @@ class GPUVAE_MM_Z_X(ap.GPUVAEModel):
         else: raise Exception()
         
         ell = cast32(self.ell)
-        c = cast32(self.c)
+        self.param_c = shared32(0)
+        sv = self.sv
         def activate():
             res = 0
             lenw = len(v['W'].get_value())
-            for (hi, hidden) in enumerate(hidden_q[1:]):
-                res += T.dot(v['W'][sum(self.n_hidden_q[:hi]):sum(self.n_hidden_q[:hi+1]),:].T, hidden)
+            for (hi, hidden) in enumerate(hidden_q[1+sv:]):
+                res += T.dot(v['W'][sum(self.n_hidden_q[sv:sv+hi]):sum(self.n_hidden_q[sv:sv+hi+1]),:].T, hidden)
             res += T.dot(v['W'][lenw-1:lenw,:].T, A)
             return res
         predy = T.argmax(activate(), axis=0)
@@ -132,7 +136,7 @@ class GPUVAE_MM_Z_X(ap.GPUVAEModel):
         # compute cost (posterior regularization).
         true_resp = (activate() * x['y']).sum(axis=0, keepdims=True)
         T.addbroadcast(true_resp, 0)
-        cost = c * (ell * (1-x['y']) + activate() - true_resp).max(axis=0).sum() + self.Lambda * (v['W'] * v['W']).sum()
+        cost = self.param_c * (ell * (1-x['y']) + activate() - true_resp).max(axis=0).sum() 
 
         # Compute virtual sample
         eps = rng.normal(size=q_mean.shape, dtype='float32')

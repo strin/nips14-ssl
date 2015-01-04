@@ -61,7 +61,6 @@ class GPUVAEModel(object):
         # Log-likelihood lower bound
         self.f_L = theanofunction(allvars, [logpx, logpz, logqz, cost])
         L = (logpx + logpz - logqz).sum() - cost
-        pdb.set_trace()
         g = T.grad(L, v.values() + w.values())
         gv, gw = dict(zip(v.keys(), g[0:len(v)])), dict(zip(w.keys(), g[len(v):len(v)+len(w)]))
         updates = get_optimizer(v, gv)

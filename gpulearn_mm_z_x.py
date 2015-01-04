@@ -19,6 +19,8 @@ from collections import OrderedDict
 
 import preprocessing as pp
 
+toStr = np.vectorize(str)
+
 def labelToMat(y):
     label = np.unique(y)
     newy = np.zeros((len(y), len(label)))
@@ -30,7 +32,7 @@ def main(n_z, n_hidden, dataset, seed, comment, gfx=True):
   
   # Initialize logdir
   import time
-  logdir = 'results/gpulearn_mm_z_x_'+dataset+'_'+str(n_z)+'-'+str(n_hidden)+'_'+comment+'_'+str(int(time.time()))+'/'
+  logdir = 'results/gpulearn_mm_z_x_'+dataset+'_'+str(n_z)+'-'+'_'.join(toStr(n_hidden))+'_'+comment+'_'+str(int(time.time()))+'/'
   if not os.path.exists(logdir): os.makedirs(logdir)
   print 'logdir:', logdir
   print 'gpulearn_mm_z_x'
@@ -379,6 +381,7 @@ def main(n_z, n_hidden, dataset, seed, comment, gfx=True):
           (z_test, pred_test) = infer(x_test)
           (z_train, pred_train) = infer(x_train)
 
+          print 'c = ', model.param_c.get_value()
           print 'epoch', epoch, 't', t, 'll', ll, 'll_valid', ll_valid, ll_valid_stats
           print 'train_err = ', evaluate(x_train, pred_train), 'test_err = ', evaluate(x_test, pred_test)
           with open(logdir+'hook.txt', 'a') as f:
@@ -412,15 +415,20 @@ def main(n_z, n_hidden, dataset, seed, comment, gfx=True):
   # Optimize
   #SFO
   dostep = epoch_vae_adam(model, x, n_batch=n_batch, bernoulli_x=bernoulli_x, byteToFloat=byteToFloat)
-  loop_va(dostep, hook)
+  loop_va(model, dostep, hook)
   
   pass
 
 # Training loop for variational autoencoder
-def loop_va(doEpoch, hook, n_epochs=9999999):
+def loop_va(model, doEpoch, hook, n_epochs=9999999):
   
   t0 = time.time()
+  ct = 1000
+  if os.environ.has_key('ct'):
+    ct = int(os.environ['ct'])
   for t in xrange(1, n_epochs):
+    if t >= ct:
+      model.param_c.set_value(model.c)
     L = doEpoch()
     hook(t, time.time() - t0, L)
     

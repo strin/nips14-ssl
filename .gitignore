@@ -54,3 +54,6 @@ docs/_build/
 target/
 
 results/
+
+# OS X
+.gitignore

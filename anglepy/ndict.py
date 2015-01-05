@@ -166,6 +166,9 @@ def get_value(d):
 def set_value(d, d2):
     return {i: d[i].set_value(d2[i]) for i in d}
 
+def set_value2(d, d2):
+    return {i: d[i].set_value(d2[i]) for i in d2}
+
 def savetext(d, name):
     for i in d: np.savetxt(file('debug_'+name+'.txt', 'w'), d[i])
     

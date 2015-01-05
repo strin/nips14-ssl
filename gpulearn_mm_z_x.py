@@ -276,17 +276,17 @@ def main(n_z, n_hidden, dataset, seed, comment, gfx=True):
   updates = get_adam_optimizer(learning_rate=learning_rate, weight_decay=weight_decay)
   model = GPUVAE_MM_Z_X(updates, n_x, n_y, n_hidden, n_z, n_hidden[::-1], nonlinear, nonlinear, type_px, type_qz=type_qz, type_pz=type_pz, prior_sd=100, init_sd=1e-3)
   
-  if False:
+  if True:
     #dir = '/Users/dpkingma/results/learn_z_x_mnist_binarized_50-(500, 500)_mog_1412689061/'
     #dir = '/Users/dpkingma/results/learn_z_x_svhn_bernoulli_300-(1000, 1000)_l1l2_sharing_and_1000HU_1412676966/'
     #dir = '/Users/dpkingma/results/learn_z_x_svhn_bernoulli_300-(1000, 1000)_l1l2_sharing_and_1000HU_1412695481/'
     #dir = '/Users/dpkingma/results/learn_z_x_mnist_binarized_50-(500, 500)_mog_1412695455/'
     #dir = '/Users/dpkingma/results/gpulearn_z_x_svhn_pca_300-(500, 500)__1413904756/'
-    dir = '/home/ubuntu/results/gpulearn_z_x_mnist_50-[500, 500]__1414259423/'
+    dir = 'models/mnist_z_x_50-500-500_longrun/'
     w = ndict.loadz(dir+'w_best.ndict.tar.gz')
     v = ndict.loadz(dir+'v_best.ndict.tar.gz')
-    ndict.set_value(model.w, w)
-    ndict.set_value(model.v, v)
+    ndict.set_value2(model.w, w)
+    ndict.set_value2(model.v, v)
   
   # Some statistics for optimization
   ll_valid_stats = [-1e99, 0]

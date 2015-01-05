@@ -26,7 +26,7 @@ Fully connected deep variational auto-encoder (VAE_Z_X)
 
 class GPUVAE_MM_Z_X(ap.GPUVAEModel):
     
-    def __init__(self, get_optimizer, n_x, n_y, n_hidden_q, n_z, n_hidden_p, nonlinear_q='tanh', nonlinear_p='tanh', type_px='bernoulli', type_qz='gaussianmarg', type_pz='gaussianmarg', prior_sd=1, init_sd=1e-2, var_smoothing=0, n_mixture=50, c=1, ell=10):
+    def __init__(self, get_optimizer, n_x, n_y, n_hidden_q, n_z, n_hidden_p, nonlinear_q='tanh', nonlinear_p='tanh', type_px='bernoulli', type_qz='gaussianmarg', type_pz='gaussianmarg', prior_sd=1, init_sd=1e-2, var_smoothing=0, n_mixture=50, c=10, ell=1, average_activation = 0.1, sparsity_weight = 3):
         self.constr = (__name__, inspect.stack()[0][3], locals())
         self.n_x = n_x
         self.n_y = n_y
@@ -44,6 +44,8 @@ class GPUVAE_MM_Z_X(ap.GPUVAEModel):
         self.n_mixture = n_mixture
         self.c = c
         self.ell = ell
+        self.average_activation = average_activation
+        self.sparsity_weight = sparsity_weight
         
         if os.environ.has_key('c'):
           self.c = float(os.environ['c'])
@@ -53,6 +55,9 @@ class GPUVAE_MM_Z_X(ap.GPUVAEModel):
         if os.environ.has_key('sv'):
           self.sv = int(os.environ['sv'])
           color.printBlue('apply supervision: ' + str(self.sv))
+        self.Lambda = 0
+        if os.environ.has_key('Lambda'):
+          self.Lambda = float(os.environ['Lambda'])
 
         color.printBlue('c = ' + str(self.c) + ' , ell = ' + str(self.ell))
 
@@ -90,6 +95,7 @@ class GPUVAE_MM_Z_X(ap.GPUVAEModel):
         
         # Compute q(z|x)
         hidden_q = [x['x']]
+        hidden_q_s = [x['x']]
         
         def f_softplus(x): return T.log(T.exp(x) + 1)# - np.log(2)
         def f_rectlin(x): return x*(x>0)
@@ -107,8 +113,10 @@ class GPUVAE_MM_Z_X(ap.GPUVAEModel):
         #hidden_q.append(nonlinear_q(T.dot(v['scale1'], A) * T.dot(w['w1'].T, hidden_q[-1]) + T.dot(v['b1'], A)))
         for i in range(len(self.n_hidden_q)):
             hidden_q.append(nonlinear_q(T.dot(v['w'+str(i)], hidden_q[-1]) + T.dot(v['b'+str(i)], A)))
+            hidden_q_s.append(T.nnet.sigmoid(T.dot(v['w'+str(i)], hidden_q_s[-1]) + T.dot(v['b'+str(i)], A)))
             if self.dropout:
                 hidden_q[-1] *= 2. * (rng.uniform(size=hidden_q[-1].shape, dtype='float32') > .5)
+                hidden_q_s[-1] *= 2. * (rng.uniform(size=hidden_q_s[-1].shape, dtype='float32') > .5)
                 
         q_mean = T.dot(v['mean_w'], hidden_q[-1]) + T.dot(v['mean_b'], A)
         if self.type_qz == 'gaussian' or self.type_qz == 'gaussianmarg':
@@ -116,8 +124,13 @@ class GPUVAE_MM_Z_X(ap.GPUVAEModel):
         else: raise Exception()
         
         ell = cast32(self.ell)
+        
         self.param_c = shared32(0)
         sv = self.sv
+
+        a_a = cast32(self.average_activation)
+        s_w = cast32(self.sparsity_weight)
+        
         def activate():
             res = 0
             lenw = len(v['W'].get_value())
@@ -136,7 +149,15 @@ class GPUVAE_MM_Z_X(ap.GPUVAEModel):
         # compute cost (posterior regularization).
         true_resp = (activate() * x['y']).sum(axis=0, keepdims=True)
         T.addbroadcast(true_resp, 0)
+
         cost = self.param_c * (ell * (1-x['y']) + activate() - true_resp).max(axis=0).sum() 
+                        + self.Lambda * (v['W'] * v['W']).sum()
+        
+        # compute the sparsity penalty
+        sparsity_penalty = 0
+        for i in range(1, len(hidden_q_s)):
+            sparsity_penalty += (a_a*T.log(a_a/(hidden_q_s[i].mean(axis=1))) + (1-a_a)*T.log((1-a_a)/(1-(hidden_q_s[i].mean(axis=1))))).sum(axis=0)
+        sparsity_penalty *= s_w
 
         # Compute virtual sample
         eps = rng.normal(size=q_mean.shape, dtype='float32')
@@ -211,7 +232,7 @@ class GPUVAE_MM_Z_X(ap.GPUVAEModel):
             def f_prior(_w, prior_sd=self.prior_sd):
                 return ap.logpdfs.standard_laplace(_w / prior_sd).sum()
             
-        return logpx, logpz, logqz, cost
+        return logpx, logpz, logqz, cost, sparsity_penalty
     
     # Generate epsilon from prior
     def gen_eps(self, n_batch):

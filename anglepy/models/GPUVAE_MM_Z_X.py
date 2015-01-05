@@ -150,7 +150,7 @@ class GPUVAE_MM_Z_X(ap.GPUVAEModel):
         true_resp = (activate() * x['y']).sum(axis=0, keepdims=True)
         T.addbroadcast(true_resp, 0)
 
-        cost = self.param_c * (ell * (1-x['y']) + activate() - true_resp).max(axis=0).sum() 
+        cost = self.param_c * (ell * (1-x['y']) + activate() - true_resp).max(axis=0).sum()  \
                         + self.Lambda * (v['W'] * v['W']).sum()
         
         # compute the sparsity penalty

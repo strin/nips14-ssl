@@ -33,7 +33,7 @@ class GPUVAE_MM_Z_X(ap.GPUVAEModel):
         self.n_hidden_q = n_hidden_q
         self.n_z = n_z
         self.n_hidden_p = n_hidden_p
-        self.dropout = True
+        self.dropout = False
         self.nonlinear_q = nonlinear_q
         self.nonlinear_p = nonlinear_p
         self.type_px = type_px
@@ -58,7 +58,8 @@ class GPUVAE_MM_Z_X(ap.GPUVAEModel):
         self.Lambda = 0
         if os.environ.has_key('Lambda'):
           self.Lambda = float(os.environ['Lambda'])
-
+        if os.environ.has_key('dropout'):
+          self.dropout = bool(os.environ['dropout'])
         color.printBlue('c = ' + str(self.c) + ' , ell = ' + str(self.ell))
 
         # Init weights

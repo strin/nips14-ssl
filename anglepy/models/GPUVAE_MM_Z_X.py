@@ -26,7 +26,9 @@ Fully connected deep variational auto-encoder (VAE_Z_X)
 
 class GPUVAE_MM_Z_X(ap.GPUVAEModel):
     
-    def __init__(self, get_optimizer, n_x, n_y, n_hidden_q, n_z, n_hidden_p, nonlinear_q='tanh', nonlinear_p='tanh', type_px='bernoulli', type_qz='gaussianmarg', type_pz='gaussianmarg', prior_sd=1, init_sd=1e-2, var_smoothing=0, n_mixture=50, c=10, ell=1, average_activation = 0.1, sparsity_weight = 3):
+    def __init__(self, get_optimizer, n_x, n_y, n_hidden_q, n_z, n_hidden_p, nonlinear_q='tanh', nonlinear_p='tanh',
+      type_px='bernoulli', type_qz='gaussianmarg', type_pz='gaussianmarg', prior_sd=1, init_sd=1e-2, var_smoothing=0,
+      n_mixture=50, c=10, ell=1):
         self.constr = (__name__, inspect.stack()[0][3], locals())
         self.n_x = n_x
         self.n_y = n_y
@@ -44,8 +46,8 @@ class GPUVAE_MM_Z_X(ap.GPUVAEModel):
         self.n_mixture = n_mixture
         self.c = c
         self.ell = ell
-        self.average_activation = average_activation
-        self.sparsity_weight = sparsity_weight
+        self.average_activation = 0.1
+        self.sparsity_weight = 0
         
         if os.environ.has_key('c'):
           self.c = float(os.environ['c'])
@@ -60,13 +62,18 @@ class GPUVAE_MM_Z_X(ap.GPUVAEModel):
           self.Lambda = float(os.environ['Lambda'])
         if os.environ.has_key('dropout'):
           self.dropout = bool(os.environ['dropout'])
+        if os.environ.has_key('sparsity_weight'):
+          self.sparsity_weight = float(os.environ['sparsity_weight'])
+        if os.environ.has_key('average_activation'):
+          self.average_activation = float(os.environ['average_activation'])
+
         color.printBlue('c = ' + str(self.c) + ' , ell = ' + str(self.ell))
 
         # Init weights
         v, w = self.init_w(1e-2)
         for i in v: v[i] = shared32(v[i])
         for i in w: w[i] = shared32(w[i])
-        W = shared32(np.zeros((sum(n_hidden_q[self.sv:])+1, n_y)))
+        W = shared32(np.zeros((self.n_z+1, n_y)))
 
         self.v = v
         self.v['W'] = W
@@ -132,14 +139,22 @@ class GPUVAE_MM_Z_X(ap.GPUVAEModel):
         a_a = cast32(self.average_activation)
         s_w = cast32(self.sparsity_weight)
         
-        def activate():
-            res = 0
-            lenw = len(v['W'].get_value())
-            for (hi, hidden) in enumerate(hidden_q[1+sv:]):
-                res += T.dot(v['W'][sum(self.n_hidden_q[sv:sv+hi]):sum(self.n_hidden_q[sv:sv+hi+1]),:].T, hidden)
-            res += T.dot(v['W'][lenw-1:lenw,:].T, A)
-            return res
-        predy = T.argmax(activate(), axis=0)
+        #def activate():
+        #    res = 0
+        #    lenw = len(v['W'].get_value())
+        #    for (hi, hidden) in enumerate(hidden_q[1+sv:]):
+        #        res += T.dot(v['W'][sum(self.n_hidden_q[sv:sv+hi]):sum(self.n_hidden_q[sv:sv+hi+1]),:].T, hidden)
+        #    res += T.dot(v['W'][lenw-1:lenw,:].T, A)
+        #    return res
+
+        def activate(h):
+          res = 0
+          lenw = len(v['W'].get_value())
+          res += T.dot(v['W'].T, hidden)
+          res += T.dot(v['W'][lenw-1:lenw,:], A)
+          return res
+
+        predy = T.argmax(activate(q_mean), axis=0)
 
         # function for distribution q(z|x)
         theanofunc = lazytheanofunc('warn', mode='FAST_RUN')
@@ -148,10 +163,24 @@ class GPUVAE_MM_Z_X(ap.GPUVAEModel):
         self.dist_qz['predy'] = theanofunc([x['x']] + [A], predy)
         
         # compute cost (posterior regularization).
-        true_resp = (activate() * x['y']).sum(axis=0, keepdims=True)
+        # primal-dual. manual iteration 1. 
+        true_resp = (activate(q_mean) * x['y']).sum(axis=0, keepdims=True)
+        mean_sqr = (q_mean * q_mean).sum(axis=0)
         T.addbroadcast(true_resp, 0)
+        T.addbroadcast(mean_sqr, 0)
+        loss = (ell * (1-x['y']) + activate(q_mean) - true_resp)
+        tau = ts.max(0, loss) / mean_sqr          # the lagrangian.
+        tau_sum = tau.sum(axis=0)
+        T.addbroadcast(tau_sum, 0)
+        mean_shift = tau_sum * T.dot(v['W'], x['y']) - T.dot(v['W'], tau)
+        # primal-dual. manual iteration 2.
+        q_mean2 = q_mean + mean_shift
+        true_resp2 = (activate(q_mean2) * x['y']).sum(axis=0, keepdims=True)
+        T.addbroadcast(true_resp2, 0)
+        loss2 = (ell * (1-x['y']) + activate(q_mean2) - true_resp2)
 
-        cost = self.param_c * (ell * (1-x['y']) + activate() - true_resp).max(axis=0).sum()  \
+        # hinge-loss.
+        cost = self.param_c * loss2.max(axis=0).sum()  \
                         + self.Lambda * (v['W'] * v['W']).sum()
         
         # compute the sparsity penalty
@@ -162,7 +191,7 @@ class GPUVAE_MM_Z_X(ap.GPUVAEModel):
 
         # Compute virtual sample
         eps = rng.normal(size=q_mean.shape, dtype='float32')
-        _z = q_mean + T.exp(0.5 * q_logvar) * eps
+        _z = q_mean2 + T.exp(0.5 * q_logvar) * eps
         
         # Compute log p(x|z)
         hidden_p = [_z]

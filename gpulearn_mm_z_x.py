@@ -468,7 +468,7 @@ def get_adam_optimizer(learning_rate=0.001, decay1=0.1, decay2=0.001, weight_dec
   def shared32(x, name=None, borrow=False):
     return theano.shared(np.asarray(x, dtype='float32'), name=name, borrow=borrow)
 
-  def get_optimizer2(w, g):
+  def get_optimizer(w, g):
     updates = OrderedDict()
     
     it = shared32(0.)

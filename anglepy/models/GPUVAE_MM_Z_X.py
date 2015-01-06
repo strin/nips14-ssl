@@ -76,8 +76,10 @@ class GPUVAE_MM_Z_X(ap.GPUVAEModel):
         W = shared32(np.zeros((self.n_z+1, n_y)))
 
         self.v = v
+        self.W = dict()
         self.v['W'] = W
         self.w = w
+        self.nograd = []   # list of expressions do not propagate gradient.
         
         super(GPUVAE_MM_Z_X, self).__init__(get_optimizer)
     
@@ -134,6 +136,7 @@ class GPUVAE_MM_Z_X(ap.GPUVAEModel):
         ell = cast32(self.ell)
         
         self.param_c = shared32(0)
+        c = self.param_c
         sv = self.sv
 
         a_a = cast32(self.average_activation)
@@ -147,11 +150,11 @@ class GPUVAE_MM_Z_X(ap.GPUVAEModel):
         #    res += T.dot(v['W'][lenw-1:lenw,:].T, A)
         #    return res
 
+        lenw = len(v['W'].get_value())
         def activate(h):
           res = 0
-          lenw = len(v['W'].get_value())
-          res += T.dot(v['W'].T, hidden)
-          res += T.dot(v['W'][lenw-1:lenw,:], A)
+          res += T.dot(v['W'][:lenw-1,:].T, h)
+          res += T.dot(v['W'][lenw-1:lenw,:].T, A)
           return res
 
         predy = T.argmax(activate(q_mean), axis=0)
@@ -165,23 +168,26 @@ class GPUVAE_MM_Z_X(ap.GPUVAEModel):
         # compute cost (posterior regularization).
         # primal-dual. manual iteration 1. 
         true_resp = (activate(q_mean) * x['y']).sum(axis=0, keepdims=True)
-        mean_sqr = (q_mean * q_mean).sum(axis=0)
+        mean_sqr = (q_mean * q_mean).sum(axis=0, keepdims=True)
         T.addbroadcast(true_resp, 0)
         T.addbroadcast(mean_sqr, 0)
         loss = (ell * (1-x['y']) + activate(q_mean) - true_resp)
-        tau = ts.max(0, loss) / mean_sqr          # the lagrangian.
-        tau_sum = tau.sum(axis=0)
+        tau = T.minimum(c, T.maximum(cast32(0), loss) / mean_sqr)          # the lagrangian.
+        tau_sum = tau.sum(axis=0, keepdims=True)
         T.addbroadcast(tau_sum, 0)
-        mean_shift = tau_sum * T.dot(v['W'], x['y']) - T.dot(v['W'], tau)
+        mean_shift = tau_sum * T.dot(v['W'][:lenw-1,:], x['y']) - T.dot(v['W'][:lenw-1], tau)
+        mean_shift = T.exp(q_logvar) * mean_shift
         # primal-dual. manual iteration 2.
-        q_mean2 = q_mean + mean_shift
+        q_mean2 = q_mean + mean_shift 
         true_resp2 = (activate(q_mean2) * x['y']).sum(axis=0, keepdims=True)
         T.addbroadcast(true_resp2, 0)
         loss2 = (ell * (1-x['y']) + activate(q_mean2) - true_resp2)
 
+        self.nograd += [mean_shift]
+
         # hinge-loss.
-        cost = self.param_c * loss2.max(axis=0).sum()  \
-                        + self.Lambda * (v['W'] * v['W']).sum()
+        cost = c * loss2.max(axis=0).sum()  \
+                + self.Lambda * (v['W'] * v['W']).sum()
         
         # compute the sparsity penalty
         sparsity_penalty = 0
@@ -191,37 +197,43 @@ class GPUVAE_MM_Z_X(ap.GPUVAEModel):
 
         # Compute virtual sample
         eps = rng.normal(size=q_mean.shape, dtype='float32')
-        _z = q_mean2 + T.exp(0.5 * q_logvar) * eps
+        _z = q_mean + T.exp(0.5 * q_logvar) * eps
+        _z2 = q_mean2 + T.exp(0.5 * q_logvar) * eps
+        self.nograd += [_z2]
         
         # Compute log p(x|z)
-        hidden_p = [_z]
-        for i in range(len(self.n_hidden_p)):
-            hidden_p.append(nonlinear_p(T.dot(w['w'+str(i)], hidden_p[-1]) + T.dot(w['b'+str(i)], A)))
-            if self.dropout:
-                hidden_p[-1] *= 2. * (rng.uniform(size=hidden_p[-1].shape, dtype='float32') > .5)
-        
-        if self.type_px == 'bernoulli':
-            p = T.nnet.sigmoid(T.dot(w['out_w'], hidden_p[-1]) + T.dot(w['out_b'], A))
-            _logpx = - T.nnet.binary_crossentropy(p, x['x'])
-            self.dist_px['x'] = theanofunc([_z] + [A], p)
-        elif self.type_px == 'gaussian':
-            x_mean = T.dot(w['out_w'], hidden_p[-1]) + T.dot(w['out_b'], A)
-            x_logvar = T.dot(w['out_logvar_w'], hidden_p[-1]) + T.dot(w['out_logvar_b'], A)
-            _logpx = ap.logpdfs.normal2(x['x'], x_mean, x_logvar)
-            self.dist_px['x'] = theanofunc([_z] + [A], [x_mean, x_logvar])
-        elif self.type_px == 'bounded01':
-            x_mean = T.nnet.sigmoid(T.dot(w['out_w'], hidden_p[-1]) + T.dot(w['out_b'], A))
-            x_logvar = T.dot(w['out_logvar_b'], A)
-            _logpx = ap.logpdfs.normal2(x['x'], x_mean, x_logvar)
-            # Make it a mixture between uniform and Gaussian
-            w_unif = T.nnet.sigmoid(T.dot(w['out_unif'], A))
-            _logpx = T.log(w_unif + (1-w_unif) * T.exp(_logpx))
-            self.dist_px['x'] = theanofunc([_z] + [A], [x_mean, x_logvar])
-        else: raise Exception("")
-            
-        # Note: logpx is a row vector (one element per sample)
-        logpx = T.dot(shared32(np.ones((1, self.n_x))), _logpx) # logpx = log p(x|z,w)
-        
+        def compute_logpx(_z):
+          hidden_p = [_z]
+          for i in range(len(self.n_hidden_p)):
+              hidden_p.append(nonlinear_p(T.dot(w['w'+str(i)], hidden_p[-1]) + T.dot(w['b'+str(i)], A)))
+              if self.dropout:
+                  hidden_p[-1] *= 2. * (rng.uniform(size=hidden_p[-1].shape, dtype='float32') > .5)
+          
+          if self.type_px == 'bernoulli':
+              p = T.nnet.sigmoid(T.dot(w['out_w'], hidden_p[-1]) + T.dot(w['out_b'], A))
+              _logpx = - T.nnet.binary_crossentropy(p, x['x'])
+              self.dist_px['x'] = theanofunc([_z] + [A], p)
+          elif self.type_px == 'gaussian':
+              x_mean = T.dot(w['out_w'], hidden_p[-1]) + T.dot(w['out_b'], A)
+              x_logvar = T.dot(w['out_logvar_w'], hidden_p[-1]) + T.dot(w['out_logvar_b'], A)
+              _logpx = ap.logpdfs.normal2(x['x'], x_mean, x_logvar)
+              self.dist_px['x'] = theanofunc([_z] + [A], [x_mean, x_logvar])
+          elif self.type_px == 'bounded01':
+              x_mean = T.nnet.sigmoid(T.dot(w['out_w'], hidden_p[-1]) + T.dot(w['out_b'], A))
+              x_logvar = T.dot(w['out_logvar_b'], A)
+              _logpx = ap.logpdfs.normal2(x['x'], x_mean, x_logvar)
+              # Make it a mixture between uniform and Gaussian
+              w_unif = T.nnet.sigmoid(T.dot(w['out_unif'], A))
+              _logpx = T.log(w_unif + (1-w_unif) * T.exp(_logpx))
+              self.dist_px['x'] = theanofunc([_z] + [A], [x_mean, x_logvar])
+          else: raise Exception("")
+              
+          # Note: logpx is a row vector (one element per sample)
+          logpx = T.dot(shared32(np.ones((1, self.n_x))), _logpx) # logpx = log p(x|z,w)
+          return logpx
+
+        logpx = compute_logpx(_z2)
+         
         # log p(z) (prior of z)
         if self.type_pz == 'gaussianmarg':
             logpz = -0.5 * (np.log(2 * np.pi) + (q_mean**2 + T.exp(q_logvar))).sum(axis=0, keepdims=True)
@@ -238,6 +250,8 @@ class GPUVAE_MM_Z_X(ap.GPUVAEModel):
             logpz = ap.logpdfs.studentt(_z, T.dot(T.exp(w['logv']), A)).sum(axis=0, keepdims=True)
         else:
             raise Exception("Unknown type_pz")
+
+        logpz += compute_logpx(_z)
         
         # loq q(z|x) (entropy of z)
         if self.type_qz == 'gaussianmarg':

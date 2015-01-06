@@ -74,113 +74,34 @@ def main(n_z, n_hidden, dataset, seed, comment, gfx=True):
     byteToFloat = False
     weight_decay = float(n_batch)/n_train
     
-  if dataset == 'mnist_binarized':
-    import anglepy.data.mnist_binarized as mnist_binarized
-    # MNIST
-    train_x, valid_x, test_x = mnist_binarized.load_numpy(28)
-    x = {'x': np.hstack((train_x, valid_x)).astype(np.float32)}
-    x_valid = {'x': test_x.astype(np.float32)}
-    L_valid = 1
-    dim_input = (28,28)
-    n_x = 28*28
-    n_y = 10
-    type_qz = 'gaussianmarg'
-    type_pz = 'mog'
-    nonlinear = 'rectlin'
-    type_px = 'bernoulli'
-    n_train = 60000
-    n_batch = 1000
-    colorImg = False
-    bernoulli_x = False
-    byteToFloat = False
-    weight_decay = float(n_batch)/n_train
-    
-  elif dataset == 'freyface':
-    # Frey's face
-    import anglepy.data.freyface as freyface
-    n_train = 1600
-    train_x = freyface.load_numpy()
-    np.random.shuffle(train_x)
-    x = {'x': train_x.T[:,0:n_train]}
-    x_valid = {'x': train_x.T[:,n_train:]}
-    L_valid = 1
-    dim_input = (28,20)
-    n_x = 20*28
-    type_qz = 'gaussianmarg'
-    type_pz = 'gaussianmarg'
-    type_px = 'bounded01'
-    nonlinear = 'tanh'  #tanh works better with freyface #'softplus'
-    n_batch = 100
-    colorImg = False
-    bernoulli_x = False
-    byteToFloat = False
-    weight_decay = float(n_batch)/n_train
-
-  elif dataset == 'freyface_pca':
-    # Frey's face
-    import anglepy.data.freyface as freyface
-    n_train = 1600
-    train_x = freyface.load_numpy().T
-    np.random.shuffle(train_x.T)
-    
-    f_enc, f_dec, _ = pp.PCA(train_x, 0.99)
-    train_x = f_enc(train_x)
-    
-    x = {'x': train_x[:,0:n_train].astype(np.float32)}
-    x_valid = {'x': train_x[:,n_train:].astype(np.float32)}
-    L_valid = 1
-    dim_input = (28,20)
-    n_x = train_x.shape[0]
-    type_qz = 'gaussianmarg'
-    type_pz = 'gaussianmarg'
-    type_px = 'gaussian'
-    nonlinear = 'softplus'
-    n_batch = 100
-    colorImg = False
-    bernoulli_x = False
-    byteToFloat = False
-
-  elif dataset == 'freyface_bernoulli':
-    # Frey's face
-    import anglepy.data.freyface as freyface
-    n_train = 1600
-    train_x = freyface.load_numpy().T
-    np.random.shuffle(train_x.T)
-    
-    x = {'x': train_x[:,0:n_train].astype(np.float32)}
-    x_valid = {'x': train_x[:,n_train:].astype(np.float32)}
-    L_valid = 1
-    dim_input = (28,20)
-    n_x = train_x.shape[0]
-    type_pz = 'gaussianmarg'
-    type_px = 'bernoulli'
-    nonlinear = 'softplus'
-    n_batch = 100
-    colorImg = False
-    bernoulli_x = False
-    byteToFloat = False
-
   elif dataset == 'norb':  
-    # small NORB dataset
     import anglepy.data.norb as norb
-    size = 48
+    size = _size #48
     train_x, train_y, test_x, test_y = norb.load_resized(size, binarize_y=True)
-
-    x = {'x': train_x.astype(np.float32)}
-    x_valid = {'x': test_x.astype(np.float32)}
+    _x = {'x': train_x, 'y': train_y}
+    ndict.shuffleCols(_x)
+    train_x = _x['x']
+    train_y = _x['y']
+    
+    # Do PCA
+    f_enc, f_dec, pca_params = pp.PCA(_x['x'][:,:10000], cutoff=2000, toFloat=False)
+    ndict.savez(pca_params, logdir+'pca_params')
+    
+    x = {'x': f_enc(train_x).astype(np.float32), 'y':train_y.astype(np.float32)}
+    x_valid = {'x': f_enc(test_x).astype(np.float32), 'y':test_y.astype(np.float32)}
+    x_test = {'x': f_enc(test_x).astype(np.float32), 'y':test_y.astype(np.float32)}
+    
     L_valid = 1
-    n_x = train_x.shape[0]
+    n_x = x['x'].shape[0]
+    n_y = 5
     dim_input = (size,size)
-    type_qz = 'gaussianmarg'
-    type_pz = 'gaussianmarg'
-    type_px = 'gaussian'
-    nonlinear = 'softplus'
-    n_batch = 900 #23400/900 = 27
+    n_batch = 1000 #23400/900 = 27
     colorImg = False
-    #binarize = False
-    byteToFloat = False
     bernoulli_x = False
-    weight_decay= float(n_batch)/train_x.shape[1]
+    byteToFloat = False
+    mosaic_w = 5
+    mosaic_h = 1
+    type_px = 'gaussian'
   
   elif dataset == 'norb_pca':  
     # small NORB dataset
@@ -209,33 +130,6 @@ def main(n_z, n_hidden, dataset, seed, comment, gfx=True):
     byteToFloat = False
     weight_decay= float(n_batch)/train_x.shape[1]
 
-  elif dataset == 'norb_normalized':
-    # small NORB dataset
-    import anglepy.data.norb as norb
-    size = 48
-    train_x, train_y, test_x, test_y = norb.load_resized(size, binarize_y=True)
-
-    #f_enc, f_dec, _ = pp.PCA(train_x, 0.99)
-    #f_enc, f_dec, _ = pp.normalize_random(train_x)
-    f_enc, f_dec, _ = pp.normalize(train_x)
-    train_x = f_enc(train_x)
-    test_x = f_enc(test_x)
-    
-    x = {'x': train_x.astype(np.float32)}
-    x_valid = {'x': test_x.astype(np.float32)}
-    L_valid = 1
-    n_x = train_x.shape[0]
-    dim_input = (size,size)
-    type_qz = 'gaussianmarg'
-    type_pz = 'gaussianmarg'
-    type_px = 'gaussian'
-    nonlinear = 'softplus'
-    n_batch = 900 #23400/900 = 27
-    colorImg = False
-    #binarize = False
-    bernoulli_x = False
-    byteToFloat = False
-    weight_decay= float(n_batch)/train_x.shape[1]
     
   elif dataset == 'svhn':
     # SVHN dataset
@@ -246,14 +140,14 @@ def main(n_z, n_hidden, dataset, seed, comment, gfx=True):
     x = {'x': np.hstack((train_x, extra_x)), 'y':np.hstack((train_y, extra_y))}
     ndict.shuffleCols(x)
     
-    print 'Performing PCA, can take a few minutes... ',
-    f_enc, f_dec, pca_params = pp.PCA(x['x'][:,:10000], cutoff=600, toFloat=True)
+    #f_enc, f_dec, (x_sd, x_mean) = pp.preprocess_normalize01(train_x, True)
+    f_enc, f_dec, pca_params = pp.PCA(x['x'][:,:10000], cutoff=1000, toFloat=True)
     ndict.savez(pca_params, logdir+'pca_params')
-    print 'Done.'
     
     n_y = 10
-    x = {'x': f_enc(x['x']).astype(np.float32)}
-    x_valid = {'x': f_enc(test_x).astype(np.float32)}
+    x = {'x': f_enc(x['x']).astype(np.float32), 'y': x['y'].astype(np.float32)}
+    x_valid = {'x': f_enc(test_x).astype(np.float32), 'y': test_y.astype(np.float32)}
+    x_test = {'x': f_enc(test_x).astype(np.float32), 'y': test_y.astype(np.float32)}
     L_valid = 1
     n_x = x['x'].shape[0]
     dim_input = (size,size)
@@ -261,10 +155,9 @@ def main(n_z, n_hidden, dataset, seed, comment, gfx=True):
     colorImg = True
     bernoulli_x = False
     byteToFloat = False
-    type_qz = 'gaussianmarg'
-    type_pz = 'gaussianmarg'
+    mosaic_w = 5
+    mosaic_h = 2
     type_px = 'gaussian'
-    nonlinear = 'softplus'
   
     
   # Construct model
@@ -282,7 +175,10 @@ def main(n_z, n_hidden, dataset, seed, comment, gfx=True):
     #dir = '/Users/dpkingma/results/learn_z_x_svhn_bernoulli_300-(1000, 1000)_l1l2_sharing_and_1000HU_1412695481/'
     #dir = '/Users/dpkingma/results/learn_z_x_mnist_binarized_50-(500, 500)_mog_1412695455/'
     #dir = '/Users/dpkingma/results/gpulearn_z_x_svhn_pca_300-(500, 500)__1413904756/'
-    dir = 'models/mnist_z_x_50-500-500_longrun/'
+    if dataset == 'mnist':
+      dir = 'models/mnist_z_x_50-500-500_longrun/'
+    elif dataset == 'svhn':
+      dir = 'models/svhn_z_x_pca_300-500-500/'
     w = ndict.loadz(dir+'w_best.ndict.tar.gz')
     v = ndict.loadz(dir+'v_best.ndict.tar.gz')
     ndict.set_value2(model.w, w)

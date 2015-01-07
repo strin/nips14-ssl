@@ -267,15 +267,16 @@ def main(n_z, n_hidden, dataset, seed, comment, gfx=True):
               predy += list(_z_confab['predy'])
               for (hi, hidden) in enumerate(_z_confab['hidden']):
                 res[sum(n_hidden[:hi]):sum(n_hidden[:hi+1]),i:i+n_batch] = hidden
-            return (res, predy)
+            stats = dict()
+            return (res, predy, _z)
 
           def evaluate(data, predy):
             y = np.argmax(data['y'], axis=0)
             return sum([int(yi != py) for (yi, py) in zip(y, predy)]) / float(len(predy))
 
 
-          (z_test, pred_test) = infer(x_test)
-          (z_train, pred_train) = infer(x_train)
+          (z_test, pred_test,_z_test) = infer(x_test)
+          (z_train, pred_train, _z_train) = infer(x_train)
 
           print 'c = ', model.param_c.get_value()
           print 'epoch', epoch, 't', t, 'll', ll, 'll_valid', ll_valid, ll_valid_stats
@@ -341,6 +342,7 @@ def epoch_vae_adam(model, x, n_batch=100, convertImgs=False, bernoulli_x=False, 
     n_tot = x['x'].shape[1]
     idx_from = 0
     L = 0
+    scores = []
     while idx_from < n_tot:
       idx_to = min(n_tot, idx_from+n_batch)
       x_minibatch = ndict.getCols(x, idx_from, idx_to)

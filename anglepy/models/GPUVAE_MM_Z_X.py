@@ -73,11 +73,8 @@ class GPUVAE_MM_Z_X(ap.GPUVAEModel):
         v, w = self.init_w(1e-2)
         for i in v: v[i] = shared32(v[i])
         for i in w: w[i] = shared32(w[i])
-        W = shared32(np.zeros((self.n_z+1, n_y)))
 
         self.v = v
-        self.W = dict()
-        self.v['W'] = W
         self.w = w
         self.nograd = []   # list of expressions do not propagate gradient.
         
@@ -151,13 +148,13 @@ class GPUVAE_MM_Z_X(ap.GPUVAEModel):
         #    return res
 
         lenw = len(v['W'].get_value())
-        def activate(h):
+        def activate(h, W):
           res = 0
-          res += T.dot(v['W'][:lenw-1,:].T, h)
-          res += T.dot(v['W'][lenw-1:lenw,:].T, A)
+          res += T.dot(W[:lenw-1,:].T, h)
+          res += T.dot(W[lenw-1:lenw,:].T, A)
           return res
 
-        predy = T.argmax(activate(q_mean), axis=0)
+        predy = T.argmax(activate(q_mean, v['W']), axis=0)
 
         # function for distribution q(z|x)
         theanofunc = lazytheanofunc('warn', mode='FAST_RUN')
@@ -165,34 +162,33 @@ class GPUVAE_MM_Z_X(ap.GPUVAEModel):
         self.dist_qz['hidden'] = theanofunc([x['x']] + [A], hidden_q[1:])
         self.dist_qz['predy'] = theanofunc([x['x']] + [A], predy)
         
+        W = v['W'][:lenw-1,:]
+        Wb = v['W'][lenw-1:lenw,:]
         # compute cost (posterior regularization).
         # primal-dual. manual iteration 1. 
-        true_resp = (activate(q_mean) * x['y']).sum(axis=0, keepdims=True)
-        mean_sqr = (q_mean * q_mean).sum(axis=0, keepdims=True)
+        resp = activate(q_mean, v['W'])
+        true_resp = (resp * x['y']).sum(axis=0, keepdims=True)
         T.addbroadcast(true_resp, 0)
-        T.addbroadcast(mean_sqr, 0)
-        loss = (ell * (1-x['y']) + activate(q_mean) - true_resp)
-        tau = T.minimum(c, T.maximum(cast32(0), loss) / mean_sqr)          # the lagrangian.
-        tau_sum = tau.sum(axis=0, keepdims=True)
-        T.addbroadcast(tau_sum, 0)
-        pmean_shift = tau_sum * T.dot(v['W'][:lenw-1,:], x['y']) - T.dot(v['W'][:lenw-1,:], tau)
-        mean_shift = T.exp(q_logvar) * pmean_shift
-        # primal-dual. manual iteration 2.
+        loss = (ell * (1-x['y']) + resp - true_resp)
+        loss = loss.max(axis=0)
+        Wdiff = T.dot(W, x['y']) - W[:,predy]
+        weight_sqr = (Wdiff**2 * T.exp(-q_logvar)).sum(axis=0, keepdims=True)
+        tau = T.minimum(c, loss / (1e-8 + weight_sqr))          # the lagrangian.
+        T.addbroadcast(tau, 0)
+        mean_shift = T.exp(q_logvar) * (tau * Wdiff )
         q_mean2 = q_mean + mean_shift 
+        true_resp2 = (activate(q_mean2, v['W']) * x['y']).sum(axis=0, keepdims=True)
+        T.addbroadcast(true_resp2, 0)
+        loss2 = (ell * (1-x['y']) + activate(q_mean2, v['W']) - true_resp2).max(axis=0)
+        #loss2 = - (q_mean2 * Wdiff).sum(axis=0)
 
-        self.nograd += [q_mean2]
 
         # Compute virtual sample
         eps = rng.normal(size=q_mean.shape, dtype='float32')
-        _z = q_mean + T.exp(0.5 * q_logvar) * eps
-        _z2 = q_mean2 + T.exp(0.5 * q_logvar) * eps
-        self.nograd += [_z2]
+        _z = q_mean2 + T.exp(0.5 * q_logvar) * eps
 
         # hinge-loss.
-        true_resp2 = (activate(q_mean2) * x['y']).sum(axis=0, keepdims=True)
-        T.addbroadcast(true_resp2, 0)
-        loss2 = (ell * (1-x['y']) + activate(q_mean2) - true_resp2)
-        cost = c * loss2.max(axis=0).sum()  \
+        cost = (c * loss2).sum()  \
                 + self.Lambda * (v['W'] * v['W']).sum()
         
         # compute the sparsity penalty
@@ -233,11 +229,11 @@ class GPUVAE_MM_Z_X(ap.GPUVAEModel):
           logpx = T.dot(shared32(np.ones((1, self.n_x))), _logpx) # logpx = log p(x|z,w)
           return logpx
 
-        logpx = compute_logpx(_z2)
+        logpx = compute_logpx(_z) 
          
         # log p(z) (prior of z)
         if self.type_pz == 'gaussianmarg':
-            logpz = -0.5 * (np.log(2 * np.pi) + (q_mean**2 + T.exp(q_logvar))).sum(axis=0, keepdims=True)
+            logpz = -0.5 * (np.log(2 * np.pi) + (q_mean2**2 + T.exp(q_logvar))).sum(axis=0, keepdims=True)
         elif self.type_pz == 'gaussian':
             logpz = ap.logpdfs.standard_normal(_z).sum(axis=0, keepdims=True)
         elif self.type_pz == 'mog':
@@ -252,13 +248,12 @@ class GPUVAE_MM_Z_X(ap.GPUVAEModel):
         else:
             raise Exception("Unknown type_pz")
 
-        logpz += compute_logpx(_z) - (T.exp(q_logvar) * pmean_shift * pmean_shift).sum()
         
         # loq q(z|x) (entropy of z)
         if self.type_qz == 'gaussianmarg':
             logqz = - 0.5 * (np.log(2 * np.pi) + 1 + q_logvar).sum(axis=0, keepdims=True)
         elif self.type_qz == 'gaussian':
-            logqz = ap.logpdfs.normal2(_z, q_mean, q_logvar).sum(axis=0, keepdims=True)
+            logqz = ap.logpdfs.normal2(_z, q_mean2, q_logvar).sum(axis=0, keepdims=True)
         else: raise Exception()
                         
         # [new part] Fisher divergence of latent variables
@@ -413,4 +408,5 @@ class GPUVAE_MM_Z_X(ap.GPUVAEModel):
                 w['out_logvar_b'] = np.zeros((self.n_x, 1))
                 w['out_unif'] = np.zeros((self.n_x, 1))
 
+        v['W'] = rand((self.n_z+1, self.n_y))
         return v, w

@@ -87,6 +87,7 @@ class GPUVAE_MM_Z_X(ap.GPUVAEModel):
         
         v = self.v         # parameters of recognition model. 
         w = self.w         # parameters of generative model. 
+        W = self.v['W']    # classificational weights.
         
         '''
         z is unused
@@ -168,25 +169,21 @@ class GPUVAE_MM_Z_X(ap.GPUVAEModel):
         # compute cost (posterior regularization).
         # primal-dual. manual iteration 1. 
         true_resp = (activate(q_mean) * x['y']).sum(axis=0, keepdims=True)
-        mean_sqr = (q_mean * q_mean).sum(axis=0, keepdims=True)
+        mean_sqr = (q_mean * q_mean).sum(axis=0, keepdims=True) + 1
         T.addbroadcast(true_resp, 0)
         T.addbroadcast(mean_sqr, 0)
-        loss = (ell * (1-x['y']) + activate(q_mean) - true_resp)
+        loss = (ell * (1-x['y']) + activate(q_mean) - true_resp).max(axis=0)
         tau = T.minimum(c, T.maximum(cast32(0), loss) / mean_sqr)          # the lagrangian.
-        tau_sum = tau.sum(axis=0, keepdims=True)
-        T.addbroadcast(tau_sum, 0)
-        pmean_shift = tau_sum * T.dot(v['W'][:lenw-1,:], x['y']) - T.dot(v['W'][:lenw-1,:], tau)
-        mean_shift = T.exp(q_logvar) * pmean_shift
+        Wdiff = T.dot(W[:lenw-1,:], x['y']) - W[:lenw-1,predy]
+        mean_shift = T.exp(q_logvar) * (tau * Wdiff)
         # primal-dual. manual iteration 2.
+        #self.nograd += [mean_shift]
         q_mean2 = q_mean + mean_shift 
-
-        self.nograd += [q_mean2]
 
         # Compute virtual sample
         eps = rng.normal(size=q_mean.shape, dtype='float32')
-        _z = q_mean + T.exp(0.5 * q_logvar) * eps
+        #_z = q_mean + T.exp(0.5 * q_logvar) * eps
         _z2 = q_mean2 + T.exp(0.5 * q_logvar) * eps
-        self.nograd += [_z2]
 
         # hinge-loss.
         true_resp2 = (activate(q_mean2) * x['y']).sum(axis=0, keepdims=True)
@@ -252,7 +249,7 @@ class GPUVAE_MM_Z_X(ap.GPUVAEModel):
         else:
             raise Exception("Unknown type_pz")
 
-        logpz += compute_logpx(_z) - (T.exp(q_logvar) * pmean_shift * pmean_shift).sum()
+        # logpz += compute_logpx(_z) 
         
         # loq q(z|x) (entropy of z)
         if self.type_qz == 'gaussianmarg':

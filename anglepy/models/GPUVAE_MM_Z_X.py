@@ -183,7 +183,7 @@ class GPUVAE_MM_Z_X(ap.GPUVAEModel):
         # Compute virtual sample
         eps = rng.normal(size=q_mean.shape, dtype='float32')
         #_z = q_mean + T.exp(0.5 * q_logvar) * eps
-        _z2 = q_mean2 + T.exp(0.5 * q_logvar) * eps
+        _z = q_mean2 + T.exp(0.5 * q_logvar) * eps
 
         # hinge-loss.
         true_resp2 = (activate(q_mean2) * x['y']).sum(axis=0, keepdims=True)
@@ -200,37 +200,34 @@ class GPUVAE_MM_Z_X(ap.GPUVAEModel):
 
         
         # Compute log p(x|z)
-        def compute_logpx(_z):
-          hidden_p = [_z]
-          for i in range(len(self.n_hidden_p)):
-              hidden_p.append(nonlinear_p(T.dot(w['w'+str(i)], hidden_p[-1]) + T.dot(w['b'+str(i)], A)))
-              if self.dropout:
-                  hidden_p[-1] *= 2. * (rng.uniform(size=hidden_p[-1].shape, dtype='float32') > .5)
-          
-          if self.type_px == 'bernoulli':
-              p = T.nnet.sigmoid(T.dot(w['out_w'], hidden_p[-1]) + T.dot(w['out_b'], A))
-              _logpx = - T.nnet.binary_crossentropy(p, x['x'])
-              self.dist_px['x'] = theanofunc([_z] + [A], p)
-          elif self.type_px == 'gaussian':
-              x_mean = T.dot(w['out_w'], hidden_p[-1]) + T.dot(w['out_b'], A)
-              x_logvar = T.dot(w['out_logvar_w'], hidden_p[-1]) + T.dot(w['out_logvar_b'], A)
-              _logpx = ap.logpdfs.normal2(x['x'], x_mean, x_logvar)
-              self.dist_px['x'] = theanofunc([_z] + [A], [x_mean, x_logvar])
-          elif self.type_px == 'bounded01':
-              x_mean = T.nnet.sigmoid(T.dot(w['out_w'], hidden_p[-1]) + T.dot(w['out_b'], A))
-              x_logvar = T.dot(w['out_logvar_b'], A)
-              _logpx = ap.logpdfs.normal2(x['x'], x_mean, x_logvar)
-              # Make it a mixture between uniform and Gaussian
-              w_unif = T.nnet.sigmoid(T.dot(w['out_unif'], A))
-              _logpx = T.log(w_unif + (1-w_unif) * T.exp(_logpx))
-              self.dist_px['x'] = theanofunc([_z] + [A], [x_mean, x_logvar])
-          else: raise Exception("")
-              
-          # Note: logpx is a row vector (one element per sample)
-          logpx = T.dot(shared32(np.ones((1, self.n_x))), _logpx) # logpx = log p(x|z,w)
-          return logpx
+        hidden_p = [_z]
+        for i in range(len(self.n_hidden_p)):
+            hidden_p.append(nonlinear_p(T.dot(w['w'+str(i)], hidden_p[-1]) + T.dot(w['b'+str(i)], A)))
+            if self.dropout:
+                hidden_p[-1] *= 2. * (rng.uniform(size=hidden_p[-1].shape, dtype='float32') > .5)
+        
+        if self.type_px == 'bernoulli':
+            p = T.nnet.sigmoid(T.dot(w['out_w'], hidden_p[-1]) + T.dot(w['out_b'], A))
+            _logpx = - T.nnet.binary_crossentropy(p, x['x'])
+            self.dist_px['x'] = theanofunc([_z] + [A], p)
+        elif self.type_px == 'gaussian':
+            x_mean = T.dot(w['out_w'], hidden_p[-1]) + T.dot(w['out_b'], A)
+            x_logvar = T.dot(w['out_logvar_w'], hidden_p[-1]) + T.dot(w['out_logvar_b'], A)
+            _logpx = ap.logpdfs.normal2(x['x'], x_mean, x_logvar)
+            self.dist_px['x'] = theanofunc([_z] + [A], [x_mean, x_logvar])
+        elif self.type_px == 'bounded01':
+            x_mean = T.nnet.sigmoid(T.dot(w['out_w'], hidden_p[-1]) + T.dot(w['out_b'], A))
+            x_logvar = T.dot(w['out_logvar_b'], A)
+            _logpx = ap.logpdfs.normal2(x['x'], x_mean, x_logvar)
+            # Make it a mixture between uniform and Gaussian
+            w_unif = T.nnet.sigmoid(T.dot(w['out_unif'], A))
+            _logpx = T.log(w_unif + (1-w_unif) * T.exp(_logpx))
+            self.dist_px['x'] = theanofunc([_z] + [A], [x_mean, x_logvar])
+        else: raise Exception("")
+            
+        # Note: logpx is a row vector (one element per sample)
+        logpx = T.dot(shared32(np.ones((1, self.n_x))), _logpx) # logpx = log p(x|z,w)
 
-        logpx = compute_logpx(_z2)
          
         # log p(z) (prior of z)
         if self.type_pz == 'gaussianmarg':
@@ -249,8 +246,6 @@ class GPUVAE_MM_Z_X(ap.GPUVAEModel):
         else:
             raise Exception("Unknown type_pz")
 
-        # logpz += compute_logpx(_z) 
-        
         # loq q(z|x) (entropy of z)
         if self.type_qz == 'gaussianmarg':
             logqz = - 0.5 * (np.log(2 * np.pi) + 1 + q_logvar).sum(axis=0, keepdims=True)

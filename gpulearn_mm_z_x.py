@@ -115,7 +115,7 @@ def main(n_z, n_hidden, dataset, seed, comment, gfx=True):
     byteToFloat = False
     weight_decay = float(n_batch)/n_train
     
-  elif dataset == 'mnist_back_random': 
+  elif dataset == 'mnist_back_rand': 
     # MNIST
     size = 28
     data_dir = '/home/lichongxuan/regbayes2/data/mat_data/'+'mnist_background_random_'
@@ -398,7 +398,7 @@ def main(n_z, n_hidden, dataset, seed, comment, gfx=True):
 
           (z_test, pred_test,_z_test) = infer(x_test)
           (z_train, pred_train, _z_train) = infer(x_train)
-
+          
           print 'c = ', model.param_c.get_value()
           print 'epoch', epoch, 't', t, 'll', ll, 'll_valid', ll_valid, ll_valid_stats
           print 'train_err = ', evaluate(x_train, pred_train), 'test_err = ', evaluate(x_test, pred_test)

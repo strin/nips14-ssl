@@ -100,7 +100,7 @@ def main(n_z, n_hidden, dataset, seed, comment, gfx=True):
     byteToFloat = False
     weight_decay = float(n_batch)/n_train
     
-  elif dataset == 'mnist_back_random': 
+  elif dataset == 'mnist_back_rand': 
     # MNIST
     size = 28
     data_dir = '/home/lichongxuan/regbayes2/data/mat_data/'+'mnist_background_random_'

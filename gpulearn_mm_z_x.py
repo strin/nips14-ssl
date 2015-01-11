@@ -18,6 +18,7 @@ import theano.tensor as T
 from collections import OrderedDict
 
 import preprocessing as pp
+import scipy.io as sio
 
 toStr = np.vectorize(str)
 
@@ -69,6 +70,126 @@ def main(n_z, n_hidden, dataset, seed, comment, gfx=True):
     n_train = 50000
     n_test = 10000
     n_batch = 1000
+    colorImg = False
+    bernoulli_x = True
+    byteToFloat = False
+    weight_decay = float(n_batch)/n_train
+    
+  elif dataset == 'mnist_rot': 
+    # MNIST
+    size = 28
+    data_dir = '/home/lichongxuan/regbayes1/data/mat_data/'+'mnist_all_rotation_normalized_float_'
+    tmp = sio.loadmat(data_dir+'train.mat')
+    train_x = tmp['x_train'].T
+    train_y = tmp['t_train'].T.astype(np.int32)
+    # no validation set
+    valid_x = train_x
+    valid_y = train_y
+    tmp = sio.loadmat(data_dir+'test.mat')
+    test_x = tmp['x_test'].T
+    test_y = tmp['t_test'].T.astype(np.int32)
+    
+    print train_x.shape
+    print train_y.shape
+    print test_x.shape
+    print test_y.shape
+    
+    f_enc, f_dec = pp.Identity()
+    x = {'x': train_x.astype(np.float32), 'y': labelToMat(train_y).astype(np.float32)}
+    x_train = x
+    x_valid = {'x': valid_x.astype(np.float32), 'y': labelToMat(valid_y).astype(np.float32)}
+    x_test = {'x': test_x.astype(np.float32), 'y': labelToMat(test_y).astype(np.float32)}
+    L_valid = 1
+    dim_input = (size,size)
+    n_x = size*size
+    n_y = 10
+    type_qz = 'gaussianmarg'
+    type_pz = 'gaussianmarg'
+    nonlinear = 'softplus'
+    type_px = 'bernoulli'
+    n_train = 12000
+    n_test = 50000
+    n_batch = 240
+    colorImg = False
+    bernoulli_x = True
+    byteToFloat = False
+    weight_decay = float(n_batch)/n_train
+    
+  elif dataset == 'mnist_back_rand': 
+    # MNIST
+    size = 28
+    data_dir = '/home/lichongxuan/regbayes1/data/mat_data/'+'mnist_background_random_'
+    tmp = sio.loadmat(data_dir+'train.mat')
+    train_x = tmp['x_train'].T
+    train_y = tmp['t_train'].T.astype(np.int32)
+    # no validation set
+    valid_x = train_x
+    valid_y = train_y
+    tmp = sio.loadmat(data_dir+'test.mat')
+    test_x = tmp['x_test'].T
+    test_y = tmp['t_test'].T.astype(np.int32)
+    
+    print train_x.shape
+    print train_y.shape
+    print test_x.shape
+    print test_y.shape
+    
+    f_enc, f_dec = pp.Identity()
+    x = {'x': train_x.astype(np.float32), 'y': labelToMat(train_y).astype(np.float32)}
+    x_train = x
+    x_valid = {'x': valid_x.astype(np.float32), 'y': labelToMat(valid_y).astype(np.float32)}
+    x_test = {'x': test_x.astype(np.float32), 'y': labelToMat(test_y).astype(np.float32)}
+    L_valid = 1
+    dim_input = (size,size)
+    n_x = size*size
+    n_y = 10
+    type_qz = 'gaussianmarg'
+    type_pz = 'gaussianmarg'
+    nonlinear = 'softplus'
+    type_px = 'bernoulli'
+    n_train = 12000
+    n_test = 50000
+    n_batch = 240
+    colorImg = False
+    bernoulli_x = True
+    byteToFloat = False
+    weight_decay = float(n_batch)/n_train
+    
+  elif dataset == 'mnist_back_image': 
+    # MNIST
+    size = 28
+    data_dir = '/home/lichongxuan/regbayes1/data/mat_data/'+'mnist_background_images_'
+    tmp = sio.loadmat(data_dir+'train.mat')
+    train_x = tmp['x_train'].T
+    train_y = tmp['t_train'].T.astype(np.int32)
+    # no validation set
+    valid_x = train_x
+    valid_y = train_y
+    tmp = sio.loadmat(data_dir+'test.mat')
+    test_x = tmp['x_test'].T
+    test_y = tmp['t_test'].T.astype(np.int32)
+    
+    print train_x.shape
+    print train_y.shape
+    print test_x.shape
+    print test_y.shape
+    
+    f_enc, f_dec = pp.Identity()
+    x = {'x': train_x.astype(np.float32), 'y': labelToMat(train_y).astype(np.float32)}
+    x_train = x
+    x_valid = {'x': valid_x.astype(np.float32), 'y': labelToMat(valid_y).astype(np.float32)}
+    x_test = {'x': test_x.astype(np.float32), 'y': labelToMat(test_y).astype(np.float32)}
+    L_valid = 1
+    dim_input = (size,size)
+    n_x = size*size
+    n_y = 10
+    type_qz = 'gaussianmarg'
+    type_pz = 'gaussianmarg'
+    nonlinear = 'softplus'
+    type_px = 'bernoulli'
+    n_train = 12000
+    n_test = 50000
+    n_batch = 240
     colorImg = False
     bernoulli_x = True
     byteToFloat = False
@@ -267,16 +388,17 @@ def main(n_z, n_hidden, dataset, seed, comment, gfx=True):
               predy += list(_z_confab['predy'])
               for (hi, hidden) in enumerate(_z_confab['hidden']):
                 res[sum(n_hidden[:hi]):sum(n_hidden[:hi+1]),i:i+n_batch] = hidden
-            return (res, predy)
+            stats = dict()
+            return (res, predy, _z)
 
           def evaluate(data, predy):
             y = np.argmax(data['y'], axis=0)
             return sum([int(yi != py) for (yi, py) in zip(y, predy)]) / float(len(predy))
 
 
-          (z_test, pred_test) = infer(x_test)
-          (z_train, pred_train) = infer(x_train)
-
+          (z_test, pred_test,_z_test) = infer(x_test)
+          (z_train, pred_train, _z_train) = infer(x_train)
+          
           print 'c = ', model.param_c.get_value()
           print 'epoch', epoch, 't', t, 'll', ll, 'll_valid', ll_valid, ll_valid_stats
           print 'train_err = ', evaluate(x_train, pred_train), 'test_err = ', evaluate(x_test, pred_test)
@@ -341,6 +463,7 @@ def epoch_vae_adam(model, x, n_batch=100, convertImgs=False, bernoulli_x=False, 
     n_tot = x['x'].shape[1]
     idx_from = 0
     L = 0
+    scores = []
     while idx_from < n_tot:
       idx_to = min(n_tot, idx_from+n_batch)
       x_minibatch = ndict.getCols(x, idx_from, idx_to)

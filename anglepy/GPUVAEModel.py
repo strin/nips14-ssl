@@ -24,7 +24,6 @@ class GPUVAEModel(object):
         
         v = self.v
         w = self.w
-        W = self.W
         theanofunction = lazytheanofunc('warn', mode='FAST_RUN')
         theanofunction_silent = lazytheanofunc('ignore', mode='FAST_RUN')
         

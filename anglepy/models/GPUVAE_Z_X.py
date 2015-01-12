@@ -41,6 +41,7 @@ class GPUVAE_Z_X(ap.GPUVAEModel):
         for i in w: w[i] = shared32(w[i])
         self.v = v
         self.w = w
+        self.nograd = []   # list of expressions do not propagate gradient.
         
         super(GPUVAE_Z_X, self).__init__(get_optimizer)
     

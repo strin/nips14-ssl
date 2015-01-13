@@ -173,7 +173,7 @@ class GPUVAE_MM_Z_X(ap.GPUVAEModel):
         T.addbroadcast(true_resp, 0)
         T.addbroadcast(mean_sqr, 0)
         loss = (ell * (1-x['y']) + activate(q_mean) - true_resp).max(axis=0)
-        tau = T.minimum(c, T.maximum(cast32(0), loss) / mean_sqr)          # the lagrangian.
+        tau = T.minimum(c, loss / mean_sqr)          # the lagrangian.
         Wdiff = T.dot(W[:lenw-1,:], x['y']) - W[:lenw-1,predy]
         mean_shift = T.exp(q_logvar) * (tau * Wdiff)
         # primal-dual. manual iteration 2.

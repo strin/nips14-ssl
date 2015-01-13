@@ -61,14 +61,10 @@ class GPUVAEModel(object):
 
         # Log-likelihood lower bound
         self.f_L = theanofunction(allvars, [logpx, logpz, logqz, cost, sparsity_penalty])
-        Lw = logpx.sum()
-        Lv = (logpz - logqz).sum() - cost
+        L = (logpx + logpz - logqz).sum() - cost - sparsity_penalty
 
-
-        # g = T.grad(L, v.values() + w.values(), consider_constant=self.nograd)
-        _gv = T.grad(Lv, v.values(), consider_constant=self.nograd)
-        _gw = T.grad(Lw, w.values(), consider_constant=self.nograd)
-        gv, gw = dict(zip(v.keys(), _gv)), dict(zip(w.keys(), _gw))
+        g = T.grad(L, v.values() + w.values())
+        gv, gw = dict(zip(v.keys(), g[0:len(v)])), dict(zip(w.keys(), g[len(v):len(v)+len(w)]))
         updates = get_optimizer(v, gv)
         updates.update(get_optimizer(w, gw))
         

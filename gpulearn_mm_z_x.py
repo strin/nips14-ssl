@@ -82,10 +82,10 @@ def main(n_z, n_hidden, dataset, seed, comment, gfx=True):
     tmp = sio.loadmat(data_dir+'train.mat')
     train_x = tmp['x_train'].T
     train_y = tmp['t_train'].T.astype(np.int32)
-    # validation set 2000
-    valid_x = train_x[10000:,:]
+    # validation 2000
+    valid_x = train_x[:,10000:]
     valid_y = train_y[10000:]
-    train_x = train_x[:10000,:]
+    train_x = train_x[:,:10000]
     train_y = train_y[:10000]
     tmp = sio.loadmat(data_dir+'test.mat')
     test_x = tmp['x_test'].T
@@ -124,10 +124,10 @@ def main(n_z, n_hidden, dataset, seed, comment, gfx=True):
     tmp = sio.loadmat(data_dir+'train.mat')
     train_x = tmp['x_train'].T
     train_y = tmp['t_train'].T.astype(np.int32)
-    # validation set 2000
-    valid_x = train_x[10000:,:]
+    # validation 2000
+    valid_x = train_x[:,10000:]
     valid_y = train_y[10000:]
-    train_x = train_x[:10000,:]
+    train_x = train_x[:,:10000]
     train_y = train_y[:10000]
     tmp = sio.loadmat(data_dir+'test.mat')
     test_x = tmp['x_test'].T
@@ -166,10 +166,10 @@ def main(n_z, n_hidden, dataset, seed, comment, gfx=True):
     tmp = sio.loadmat(data_dir+'train.mat')
     train_x = tmp['x_train'].T
     train_y = tmp['t_train'].T.astype(np.int32)
-    # validation set 2000
-    valid_x = train_x[10000:,:]
+    # validation 2000
+    valid_x = train_x[:,10000:]
     valid_y = train_y[10000:]
-    train_x = train_x[:10000,:]
+    train_x = train_x[:,:10000]
     train_y = train_y[:10000]
     tmp = sio.loadmat(data_dir+'test.mat')
     test_x = tmp['x_test'].T
@@ -208,10 +208,10 @@ def main(n_z, n_hidden, dataset, seed, comment, gfx=True):
     tmp = sio.loadmat(data_dir+'train.mat')
     train_x = tmp['x_train'].T
     train_y = tmp['t_train'].T.astype(np.int32)
-    # validation set 2000
-    valid_x = train_x[10000:,:]
+    # validation 2000
+    valid_x = train_x[:,10000:]
     valid_y = train_y[10000:]
-    train_x = train_x[:10000,:]
+    train_x = train_x[:,:10000]
     train_y = train_y[:10000]
     tmp = sio.loadmat(data_dir+'test.mat')
     test_x = tmp['x_test'].T

@@ -63,7 +63,7 @@ def main(n_z, n_hidden, dataset, seed, comment, gfx=True):
   elif dataset == 'mnist_rot':
     # MNIST
     size = 28
-    data_dir = '/home/lichongxuan/regbayes1/data/mat_data/'+'mnist_all_rotation_normalized_float_'
+    data_dir = '/home/lichongxuan/regbayes2/data/mat_data/'+'mnist_all_rotation_normalized_float_'
     tmp = sio.loadmat(data_dir+'train.mat')
     train_x = tmp['x_train'].T
     train_y = tmp['t_train'].T.astype(np.int32)
@@ -105,7 +105,7 @@ def main(n_z, n_hidden, dataset, seed, comment, gfx=True):
   elif dataset == 'mnist_back_rand': 
     # MNIST
     size = 28
-    data_dir = '/home/lichongxuan/regbayes1/data/mat_data/'+'mnist_background_random_'
+    data_dir = '/home/lichongxuan/regbayes2/data/mat_data/'+'mnist_background_random_'
     tmp = sio.loadmat(data_dir+'train.mat')
     train_x = tmp['x_train'].T
     train_y = tmp['t_train'].T.astype(np.int32)
@@ -147,7 +147,7 @@ def main(n_z, n_hidden, dataset, seed, comment, gfx=True):
   elif dataset == 'mnist_back_image': 
     # MNIST
     size = 28
-    data_dir = '/home/lichongxuan/regbayes1/data/mat_data/'+'mnist_background_images_'
+    data_dir = '/home/lichongxuan/regbayes2/data/mat_data/'+'mnist_background_images_'
     tmp = sio.loadmat(data_dir+'train.mat')
     train_x = tmp['x_train'].T
     train_y = tmp['t_train'].T.astype(np.int32)

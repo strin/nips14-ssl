@@ -82,9 +82,12 @@ def main(n_z, n_hidden, dataset, seed, comment, gfx=True):
     tmp = sio.loadmat(data_dir+'train.mat')
     train_x = tmp['x_train'].T
     train_y = tmp['t_train'].T.astype(np.int32)
-    # no validation set
-    valid_x = train_x
-    valid_y = train_y
+    # validation 2000
+    valid_x = train_x[:,10000:]
+    valid_y = train_y[10000:]
+    train_x = train_x[:,:10000]
+    train_y = train_y[:10000]
+    
     tmp = sio.loadmat(data_dir+'test.mat')
     test_x = tmp['x_test'].T
     test_y = tmp['t_test'].T.astype(np.int32)
@@ -93,6 +96,8 @@ def main(n_z, n_hidden, dataset, seed, comment, gfx=True):
     print train_y.shape
     print test_x.shape
     print test_y.shape
+    print valid_x.shape
+    print valid_y.shape
     
     f_enc, f_dec = pp.Identity()
     x = {'x': train_x.astype(np.float32), 'y': labelToMat(train_y).astype(np.float32)}
@@ -122,9 +127,11 @@ def main(n_z, n_hidden, dataset, seed, comment, gfx=True):
     tmp = sio.loadmat(data_dir+'train.mat')
     train_x = tmp['x_train'].T
     train_y = tmp['t_train'].T.astype(np.int32)
-    # no validation set
-    valid_x = train_x
-    valid_y = train_y
+    # validation 2000
+    valid_x = train_x[:,10000:]
+    valid_y = train_y[10000:]
+    train_x = train_x[:,:10000]
+    train_y = train_y[:10000]
     tmp = sio.loadmat(data_dir+'test.mat')
     test_x = tmp['x_test'].T
     test_y = tmp['t_test'].T.astype(np.int32)
@@ -162,9 +169,11 @@ def main(n_z, n_hidden, dataset, seed, comment, gfx=True):
     tmp = sio.loadmat(data_dir+'train.mat')
     train_x = tmp['x_train'].T
     train_y = tmp['t_train'].T.astype(np.int32)
-    # no validation set
-    valid_x = train_x
-    valid_y = train_y
+    # validation 2000
+    valid_x = train_x[:,10000:]
+    valid_y = train_y[10000:]
+    train_x = train_x[:,:10000]
+    train_y = train_y[:10000]
     tmp = sio.loadmat(data_dir+'test.mat')
     test_x = tmp['x_test'].T
     test_y = tmp['t_test'].T.astype(np.int32)
@@ -202,9 +211,11 @@ def main(n_z, n_hidden, dataset, seed, comment, gfx=True):
     tmp = sio.loadmat(data_dir+'train.mat')
     train_x = tmp['x_train'].T
     train_y = tmp['t_train'].T.astype(np.int32)
-    # no validation set
-    valid_x = train_x
-    valid_y = train_y
+    # validation 2000
+    valid_x = train_x[:,10000:]
+    valid_y = train_y[10000:]
+    train_x = train_x[:,:10000]
+    train_y = train_y[:10000]
     tmp = sio.loadmat(data_dir+'test.mat')
     test_x = tmp['x_test'].T
     test_y = tmp['t_test'].T.astype(np.int32)

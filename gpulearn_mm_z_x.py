@@ -373,7 +373,8 @@ def main(n_z, n_hidden, dataset, seed, comment, gfx=True):
   # Progress hook
   def hook(epoch, t, ll):
     
-    if epoch%1 != 0: return
+    if epoch%10 != 0: return
+    
     
     ll_valid, _ = model.est_loglik(x_valid, n_samples=L_valid, n_batch=n_batch, byteToFloat=byteToFloat)
     
@@ -395,7 +396,6 @@ def main(n_z, n_hidden, dataset, seed, comment, gfx=True):
           print >>f, "Finished"
         exit()
     
-
     # Graphics
     if gfx and epoch%gfx_freq == 0:
       
@@ -494,21 +494,24 @@ def main(n_z, n_hidden, dataset, seed, comment, gfx=True):
             print >>f, 'train_err = ', evaluate(x_train, pred_train), 'valid_err = ', evaluate(x_valid, pred_valid), 'test_err = ', evaluate(x_test, pred_test)
           sio.savemat(logdir+'latent.mat', {'z_test': z_test, 'z_train': z_train})
         
+        
+        
         pre_valid = evaluate(x_valid, pred_valid)
         if pre_valid > predy_valid_stats[0]:
           predy_valid_stats[0] = pre_valid
           predy_valid_stats[1] = 0
-          ndict.savez(ndict.get_value(model.v), logdir+'v_best-predy')
-          ndict.savez(ndict.get_value(model.w), logdir+'w_best-predy')
+          ndict.savez(ndict.get_value(model.v), logdir+'v_best_predy')
+          ndict.savez(ndict.get_value(model.w), logdir+'w_best_predy')
         else:
           predy_valid_stats[1] += 1
           # Stop when not improving validation set performance in 100 iterations
           if predy_valid_stats[1] > 1000:
             print "Finished"
-          with open(logdir+'hook.txt', 'a') as f:
-            print >>f, "Finished"
-          exit()
+            with open(logdir+'hook.txt', 'a') as f:
+              print >>f, "Finished"
+            exit()
           
+        
           #x_samples = _x['x']
           #image = paramgraphics.mat_to_img(x_samples, dim_input, colorImg=colorImg)
           #image.save(logdir+'samples2'+tail, 'PNG')
@@ -528,9 +531,7 @@ def main(n_z, n_hidden, dataset, seed, comment, gfx=True):
         x_samples = np.minimum(np.maximum(x_samples, 0), 1)
         image = paramgraphics.mat_to_img(x_samples, dim_input, colorImg=colorImg)
         image.save(logdir+'samples'+tail, 'PNG')
-        
-        
-        
+
   # Optimize
   #SFO
   dostep = epoch_vae_adam(model, x, n_batch=n_batch, bernoulli_x=bernoulli_x, byteToFloat=byteToFloat)
@@ -539,7 +540,7 @@ def main(n_z, n_hidden, dataset, seed, comment, gfx=True):
   pass
 
 # Training loop for variational autoencoder
-def loop_va(model, doEpoch, hook, n_epochs=9999999):
+def loop_va(model, doEpoch, hook, n_epochs=3001):
   
   t0 = time.time()
   ct = 1000

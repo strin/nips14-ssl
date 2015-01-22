@@ -67,9 +67,11 @@ class GPUVAE_MM_Z_X(ap.GPUVAEModel):
         for i in v: v[i] = shared32(v[i])
         for i in w: w[i] = shared32(w[i])
         W = shared32(np.zeros((sum(n_hidden_q[self.sv:])+1, n_y)))
-
+        
         self.v = v
         self.v['W'] = W
+        print 'layers with supervision: ', self.sv
+        print 'dimension of the prediction model: ', self.v['W'].get_value().shape
         self.w = w
         
         super(GPUVAE_MM_Z_X, self).__init__(get_optimizer)
@@ -118,8 +120,19 @@ class GPUVAE_MM_Z_X(ap.GPUVAEModel):
             if self.dropout:
                 hidden_q[-1] *= 2. * (rng.uniform(size=hidden_q[-1].shape, dtype='float32') > .5)
                 hidden_q_s[-1] *= 2. * (rng.uniform(size=hidden_q_s[-1].shape, dtype='float32') > .5)
-                
-        q_mean = T.dot(v['mean_w'], hidden_q[-1]) + T.dot(v['mean_b'], A)
+        
+        '''
+        print 'mm_model'
+        for (d, xx) in x.items():
+          print d
+        '''
+        
+        #print 'x', x['mean_prior'].type
+        #print 'T', (T.dot(v['mean_w'], hidden_q[-1]) + T.dot(v['mean_b'], A)).type
+        
+        q_mean = x['mean_prior'] + T.dot(v['mean_w'], hidden_q[-1]) + T.dot(v['mean_b'], A)
+        #q_mean = T.dot(v['mean_w'], hidden_q[-1]) + T.dot(v['mean_b'], A)
+        
         if self.type_qz == 'gaussian' or self.type_qz == 'gaussianmarg':
             q_logvar = T.dot(v['logvar_w'], hidden_q[-1]) + T.dot(v['logvar_b'], A)
         else: raise Exception()
@@ -143,9 +156,9 @@ class GPUVAE_MM_Z_X(ap.GPUVAEModel):
 
         # function for distribution q(z|x)
         theanofunc = lazytheanofunc('warn', mode='FAST_RUN')
-        self.dist_qz['z'] = theanofunc([x['x']] + [A], [q_mean, q_logvar])
-        self.dist_qz['hidden'] = theanofunc([x['x']] + [A], hidden_q[1:])
-        self.dist_qz['predy'] = theanofunc([x['x']] + [A], predy)
+        self.dist_qz['z'] = theanofunc([x['x'], x['mean_prior']] + [A], [q_mean, q_logvar])
+        self.dist_qz['hidden'] = theanofunc([x['x'], x['mean_prior']] + [A], hidden_q[1:])
+        self.dist_qz['predy'] = theanofunc([x['x'], x['mean_prior']] + [A], predy)
         
         # compute cost (posterior regularization).
         true_resp = (activate() * x['y']).sum(axis=0, keepdims=True)
@@ -254,9 +267,9 @@ class GPUVAE_MM_Z_X(ap.GPUVAEModel):
         # If x['x'] was given but not z['z']: generate z ~ q(z|x)
         if x.has_key('x') and not z.has_key('z'):
 
-            q_mean, q_logvar = self.dist_qz['z'](*([x['x']] + [A]))
-            q_hidden = self.dist_qz['hidden'](*([x['x']] + [A]))
-            predy = self.dist_qz['predy'](*([x['x']] + [A]))
+            q_mean, q_logvar = self.dist_qz['z'](*([x['x'], x['mean_prior']] + [A]))
+            q_hidden = self.dist_qz['hidden'](*([x['x'], x['mean_prior']] + [A]))
+            predy = self.dist_qz['predy'](*([x['x'], x['mean_prior']] + [A]))
 
             _z['mean'] = q_mean
             _z['logvar'] = q_logvar
@@ -308,7 +321,8 @@ class GPUVAE_MM_Z_X(ap.GPUVAEModel):
         z = {}
 
         # Define observed variables 'x'
-        x = {'x': T.fmatrix('x'), 'y': T.fmatrix('y')}
+        x = {'x': T.fmatrix('x'), 'mean_prior': T.fmatrix('mean_prior'), 'y': T.fmatrix('y'), }
+        #x = {'x': T.fmatrix('x'), 'y': T.fmatrix('y'), }
         
         return x, z
     

@@ -35,7 +35,16 @@ class GPUVAEModel(object):
         A = T.fmatrix('A')
         self.var_A = A
         
+        '''
         # Get gradient symbols
+        print 'model, x'
+        for (d, xx) in x.items():
+          print d
+          print xx.shape
+          
+        print x.values()
+        '''
+        
         allvars = x.values() + z.values() + [A] # note: '+' concatenates lists
         
         # TODO: more beautiful/standardized way of setting distributions

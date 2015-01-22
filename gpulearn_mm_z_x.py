@@ -55,10 +55,23 @@ def main(n_z, n_hidden, dataset, seed, comment, gfx=True):
     size = 28
     train_x, train_y, valid_x, valid_y, test_x, test_y = mnist.load_numpy(size)
     f_enc, f_dec = pp.Identity()
+    
+    
+    train_mean_prior = np.zeros((n_z,train_x.shape[1]))
+    test_mean_prior = np.zeros((n_z,test_x.shape[1]))
+    valid_mean_prior = np.zeros((n_z,valid_x.shape[1]))
+    '''
     x = {'x': train_x.astype(np.float32), 'y': labelToMat(train_y).astype(np.float32)}
     x_train = x
     x_valid = {'x': valid_x.astype(np.float32), 'y': labelToMat(valid_y).astype(np.float32)}
     x_test = {'x': test_x.astype(np.float32), 'y': labelToMat(test_y).astype(np.float32)}
+    '''
+    x = {'x': train_x.astype(np.float32), 'mean_prior': train_mean_prior.astype(np.float32), 'y': labelToMat(train_y).astype(np.float32)}
+    x_train = x
+    x_valid = {'x': valid_x.astype(np.float32), 'mean_prior': valid_mean_prior.astype(np.float32), 'y': labelToMat(valid_y).astype(np.float32)}
+    x_test = {'x': test_x.astype(np.float32), 'mean_prior': test_mean_prior.astype(np.float32), 'y': labelToMat(test_y).astype(np.float32)}
+    
+    
     L_valid = 1
     dim_input = (size,size)
     n_x = size*size
@@ -355,11 +368,12 @@ def main(n_z, n_hidden, dataset, seed, comment, gfx=True):
   
   # Some statistics for optimization
   ll_valid_stats = [-1e99, 0]
+  predy_valid_stats = [0, 0]
   
   # Progress hook
   def hook(epoch, t, ll):
     
-    if epoch%10 != 0: return
+    if epoch%1 != 0: return
     
     ll_valid, _ = model.est_loglik(x_valid, n_samples=L_valid, n_batch=n_batch, byteToFloat=byteToFloat)
     
@@ -433,29 +447,68 @@ def main(n_z, n_hidden, dataset, seed, comment, gfx=True):
               x_batch = ndict.getCols(data, i, idx_to)
               _x, _z, _z_confab = model.gen_xz(x_batch, {}, n_batch)
               x_samples = _z_confab['x']
+              
+              
               predy += list(_z_confab['predy'])
+              
+              if i == -1:
+                if epoch == 1:
+                  print '_x'
+                  for (d, x) in _x.items():
+                    print d
+                    print x.shape
+                    
+                  print '_z'
+                  for (d, x) in _z.items():
+                    print d
+                    print x.shape
+                    
+                  print '_z_confab'
+                  for (d, x) in _z_confab.items():
+                    print d
+                    
+                      
+                      
               for (hi, hidden) in enumerate(_z_confab['hidden']):
                 res[sum(n_hidden[:hi]):sum(n_hidden[:hi+1]),i:i+n_batch] = hidden
             stats = dict()
+            
+            if epoch == -1:
+              print 'features: ', res.shape
+            
             return (res, predy, _z)
 
           def evaluate(data, predy):
             y = np.argmax(data['y'], axis=0)
             return sum([int(yi != py) for (yi, py) in zip(y, predy)]) / float(len(predy))
 
-
           (z_test, pred_test,_z_test) = infer(x_test)
+          (z_valid, pred_valid,_z_valid) = infer(x_valid)
           (z_train, pred_train, _z_train) = infer(x_train)
           
           print 'c = ', model.param_c.get_value()
           print 'epoch', epoch, 't', t, 'll', ll, 'll_valid', ll_valid, ll_valid_stats
-          print 'train_err = ', evaluate(x_train, pred_train), 'test_err = ', evaluate(x_test, pred_test)
+          print 'train_err = ', evaluate(x_train, pred_train), 'valid_err = ', evaluate(x_valid, pred_valid), 'test_err = ', evaluate(x_test, pred_test)
           with open(logdir+'hook.txt', 'a') as f:
             print >>f, 'epoch', epoch, 't', t, 'll', ll, 'll_valid', ll_valid, ll_valid_stats
-            print >>f, 'train_err = ', evaluate(x_train, pred_train), 'test_err = ', evaluate(x_test, pred_test)
-
-          # sio.savemat(logdir+'latent.mat', {'z_test': z_test, 'z_train': z_train})
-
+            print >>f, 'train_err = ', evaluate(x_train, pred_train), 'valid_err = ', evaluate(x_valid, pred_valid), 'test_err = ', evaluate(x_test, pred_test)
+          sio.savemat(logdir+'latent.mat', {'z_test': z_test, 'z_train': z_train})
+        
+        pre_valid = evaluate(x_valid, pred_valid)
+        if pre_valid > predy_valid_stats[0]:
+          predy_valid_stats[0] = pre_valid
+          predy_valid_stats[1] = 0
+          ndict.savez(ndict.get_value(model.v), logdir+'v_best-predy')
+          ndict.savez(ndict.get_value(model.w), logdir+'w_best-predy')
+        else:
+          predy_valid_stats[1] += 1
+          # Stop when not improving validation set performance in 100 iterations
+          if predy_valid_stats[1] > 1000:
+            print "Finished"
+          with open(logdir+'hook.txt', 'a') as f:
+            print >>f, "Finished"
+          exit()
+          
           #x_samples = _x['x']
           #image = paramgraphics.mat_to_img(x_samples, dim_input, colorImg=colorImg)
           #image.save(logdir+'samples2'+tail, 'PNG')
@@ -516,8 +569,11 @@ def epoch_vae_adam(model, x, n_batch=100, convertImgs=False, bernoulli_x=False, 
       idx_to = min(n_tot, idx_from+n_batch)
       x_minibatch = ndict.getCols(x, idx_from, idx_to)
       idx_from += n_batch
+      
+      
       if byteToFloat: x_minibatch['x'] = x_minibatch['x'].astype(np.float32)/256.
       if bernoulli_x: x_minibatch['x'] = np.random.binomial(n=1, p=x_minibatch['x']).astype(np.float32)
+      
       
       # Do gradient ascent step
       L += model.evalAndUpdate(x_minibatch, {}).sum()
@@ -563,6 +619,8 @@ def get_adam_optimizer(learning_rate=0.001, decay1=0.1, decay2=0.001, weight_dec
       effgrad = mom1_new / (T.sqrt(mom2_new) + 1e-10)
       
       effstep_new = lr_t * effgrad
+      
+      #print 'learning rate: ', lr_t.eval()
       
       # Do update
       w_new = w[i] + effstep_new

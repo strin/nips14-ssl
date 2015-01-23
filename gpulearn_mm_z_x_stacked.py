@@ -28,7 +28,23 @@ def labelToMat(y):
     for i in range(len(y)):
         newy[i, y[i]] = 1
     return newy.T
-
+    
+def infer1(data, v, layers=2):
+  if True:
+    res = [data]
+    for i in xrange(layers):
+      res += [np.log(1 + np.exp(v['w'+str(i)].dot(res[-1]) + v['b'+str(i)]))]
+    for i in xrange(layers-1):
+      res[i+2] = np.vstack((res[i+1], res[i+2]))
+    return res[-1]
+    
+  else:
+    res = data
+    for i in xrange(layers):
+      res = np.log(1 + np.exp(v['w'+str(i)].dot(res) + v['b'+str(i)]))
+    return res
+    
+    
 def main(n_z, n_hidden, dataset, seed, comment, alpha, decay1, decay2, gfx=True):
   
   # Initialize logdir
@@ -36,7 +52,7 @@ def main(n_z, n_hidden, dataset, seed, comment, alpha, decay1, decay2, gfx=True)
   logdir = 'results/gpulearn_mm_z_x_stacked_'+dataset+'_'+str(n_z)+'-'+'_'.join(toStr(n_hidden))+'_'+comment+'_'+str(int(time.time()))+'/'
   if not os.path.exists(logdir): os.makedirs(logdir)
   print 'logdir:', logdir
-  print 'gpulearn_mm_z_x'
+  print 'gpulearn_mm_z_x_stacked'
   color.printBlue('dataset = ' + str(dataset) + ' , n_z = ' + str(n_z) + ' , n_hidden = ' + str(n_hidden))
   with open(logdir+'hook.txt', 'a') as f:
     print >>f, 'learn_z_x', n_z, n_hidden, dataset, seed
@@ -58,35 +74,15 @@ def main(n_z, n_hidden, dataset, seed, comment, alpha, decay1, decay2, gfx=True)
     
     dir = 'models/mnist_z_x_50-500-500_longrun/'
     v = ndict.loadz(dir+'v_best.ndict.tar.gz')
-    
-    # Transform original data to the features
-    def infer1(data, layers=2):
-      if True:
-        res = [data]
-        for i in xrange(layers):
-          res += [np.log(1 + np.exp(v['w'+str(i)].dot(res[-1]) + v['b'+str(i)]))]
-        for i in xrange(layers-1):
-          res[i+2] = np.vstack((res[i+1], res[i+2]))
-        return res[-1]
-        
-      else:
-        res = data
-        for i in xrange(layers):
-          res = np.log(1 + np.exp(v['w'+str(i)].dot(res) + v['b'+str(i)]))
-        return res
-    
-    train_x = infer1(train_x)
-    test_x = infer1(test_x)
-    valid_x = infer1(valid_x)
-    
-    '''
+    train_x = infer1(train_x,v)
+    test_x = infer1(test_x,v)
+    valid_x = infer1(valid_x,v)
+
     # Test the features are right
     print test_x.shape
     print train_x.shape
     print valid_x.shape
-    sio.savemat(logdir+'latent.mat', {'z_test': test_x, 'z_train': train_x})
-    exit()
-    '''
+
     
     train_mean_prior = np.zeros((n_z,train_x.shape[1]))
     test_mean_prior = np.zeros((n_z,test_x.shape[1]))
@@ -97,11 +93,9 @@ def main(n_z, n_hidden, dataset, seed, comment, alpha, decay1, decay2, gfx=True)
     x_valid = {'x': valid_x.astype(np.float32), 'mean_prior': valid_mean_prior.astype(np.float32), 'y': labelToMat(valid_y).astype(np.float32)}
     x_test = {'x': test_x.astype(np.float32), 'mean_prior': test_mean_prior.astype(np.float32), 'y': labelToMat(test_y).astype(np.float32)}
     
-    
-    
     L_valid = 1
     dim_input = (size,size)
-    n_x = size*size
+    n_x = x_train['x'].shape[0]
     n_y = 10
     type_qz = 'gaussianmarg'
     type_pz = 'gaussianmarg'
@@ -131,29 +125,52 @@ def main(n_z, n_hidden, dataset, seed, comment, alpha, decay1, decay2, gfx=True)
     test_x = tmp['x_test'].T
     test_y = tmp['t_test'].T.astype(np.int32)
     
+    dir = 'models/mnist_rot_z_x_50-500-500_longrun/'
+    v = ndict.loadz(dir+'v_best.ndict.tar.gz')
+    train_x = infer1(train_x,v)
+    test_x = infer1(test_x,v)
+    valid_x = infer1(valid_x,v)
+    '''
+    # Test the features are right
+    print test_x.shape
+    print train_x.shape
+    print valid_x.shape
+    sio.savemat(logdir+'latent.mat', {'z_test': test_x, 'z_train': train_x})
+    exit()
+    '''
+    
     print train_x.shape
     print train_y.shape
     print test_x.shape
     print test_y.shape
     
     f_enc, f_dec = pp.Identity()
+    train_mean_prior = np.zeros((n_z,train_x.shape[1]))
+    test_mean_prior = np.zeros((n_z,test_x.shape[1]))
+    valid_mean_prior = np.zeros((n_z,valid_x.shape[1]))
+    '''
     x = {'x': train_x.astype(np.float32), 'y': labelToMat(train_y).astype(np.float32)}
     x_train = x
     x_valid = {'x': valid_x.astype(np.float32), 'y': labelToMat(valid_y).astype(np.float32)}
     x_test = {'x': test_x.astype(np.float32), 'y': labelToMat(test_y).astype(np.float32)}
+    '''
+    x = {'x': train_x.astype(np.float32), 'mean_prior': train_mean_prior.astype(np.float32), 'y': labelToMat(train_y).astype(np.float32)}
+    x_train = x
+    x_valid = {'x': valid_x.astype(np.float32), 'mean_prior': valid_mean_prior.astype(np.float32), 'y': labelToMat(valid_y).astype(np.float32)}
+    x_test = {'x': test_x.astype(np.float32), 'mean_prior': test_mean_prior.astype(np.float32), 'y': labelToMat(test_y).astype(np.float32)}
     L_valid = 1
     dim_input = (size,size)
-    n_x = size*size
+    n_x = x_train['x'].shape[0]
     n_y = 10
     type_qz = 'gaussianmarg'
     type_pz = 'gaussianmarg'
     nonlinear = 'softplus'
-    type_px = 'bernoulli'
+    type_px = 'gaussian'
     n_train = 12000
     n_test = 50000
     n_batch = 240
     colorImg = False
-    bernoulli_x = True
+    bernoulli_x = False
     byteToFloat = False
     weight_decay = float(n_batch)/n_train
     
@@ -173,29 +190,52 @@ def main(n_z, n_hidden, dataset, seed, comment, alpha, decay1, decay2, gfx=True)
     test_x = tmp['x_test'].T
     test_y = tmp['t_test'].T.astype(np.int32)
     
+    dir = 'models/mnist_back_rand_z_x_50-500-500_longrun/'
+    v = ndict.loadz(dir+'v_best.ndict.tar.gz')
+    train_x = infer1(train_x,v)
+    test_x = infer1(test_x,v)
+    valid_x = infer1(valid_x,v)
+    '''
+    # Test the features are right
+    print test_x.shape
+    print train_x.shape
+    print valid_x.shape
+    sio.savemat(logdir+'latent.mat', {'z_test': test_x, 'z_train': train_x})
+    exit()
+    '''
+    
     print train_x.shape
     print train_y.shape
     print test_x.shape
     print test_y.shape
     
     f_enc, f_dec = pp.Identity()
+    train_mean_prior = np.zeros((n_z,train_x.shape[1]))
+    test_mean_prior = np.zeros((n_z,test_x.shape[1]))
+    valid_mean_prior = np.zeros((n_z,valid_x.shape[1]))
+    '''
     x = {'x': train_x.astype(np.float32), 'y': labelToMat(train_y).astype(np.float32)}
     x_train = x
     x_valid = {'x': valid_x.astype(np.float32), 'y': labelToMat(valid_y).astype(np.float32)}
     x_test = {'x': test_x.astype(np.float32), 'y': labelToMat(test_y).astype(np.float32)}
+    '''
+    x = {'x': train_x.astype(np.float32), 'mean_prior': train_mean_prior.astype(np.float32), 'y': labelToMat(train_y).astype(np.float32)}
+    x_train = x
+    x_valid = {'x': valid_x.astype(np.float32), 'mean_prior': valid_mean_prior.astype(np.float32), 'y': labelToMat(valid_y).astype(np.float32)}
+    x_test = {'x': test_x.astype(np.float32), 'mean_prior': test_mean_prior.astype(np.float32), 'y': labelToMat(test_y).astype(np.float32)}
     L_valid = 1
     dim_input = (size,size)
-    n_x = size*size
+    n_x = x_train['x'].shape[0]
     n_y = 10
     type_qz = 'gaussianmarg'
     type_pz = 'gaussianmarg'
     nonlinear = 'softplus'
-    type_px = 'bernoulli'
+    type_px = 'gaussian'
     n_train = 12000
     n_test = 50000
     n_batch = 240
     colorImg = False
-    bernoulli_x = True
+    bernoulli_x = False
     byteToFloat = False
     weight_decay = float(n_batch)/n_train
     
@@ -215,29 +255,52 @@ def main(n_z, n_hidden, dataset, seed, comment, alpha, decay1, decay2, gfx=True)
     test_x = tmp['x_test'].T
     test_y = tmp['t_test'].T.astype(np.int32)
     
+    dir = 'models/mnist_back_image_z_x_50-500-500_longrun/'
+    v = ndict.loadz(dir+'v_best.ndict.tar.gz')
+    train_x = infer1(train_x,v)
+    test_x = infer1(test_x,v)
+    valid_x = infer1(valid_x,v)
+    '''
+    # Test the features are right
+    print test_x.shape
+    print train_x.shape
+    print valid_x.shape
+    sio.savemat(logdir+'latent.mat', {'z_test': test_x, 'z_train': train_x})
+    exit()
+    '''
+    
     print train_x.shape
     print train_y.shape
     print test_x.shape
     print test_y.shape
     
     f_enc, f_dec = pp.Identity()
+    train_mean_prior = np.zeros((n_z,train_x.shape[1]))
+    test_mean_prior = np.zeros((n_z,test_x.shape[1]))
+    valid_mean_prior = np.zeros((n_z,valid_x.shape[1]))
+    '''
     x = {'x': train_x.astype(np.float32), 'y': labelToMat(train_y).astype(np.float32)}
     x_train = x
     x_valid = {'x': valid_x.astype(np.float32), 'y': labelToMat(valid_y).astype(np.float32)}
     x_test = {'x': test_x.astype(np.float32), 'y': labelToMat(test_y).astype(np.float32)}
+    '''
+    x = {'x': train_x.astype(np.float32), 'mean_prior': train_mean_prior.astype(np.float32), 'y': labelToMat(train_y).astype(np.float32)}
+    x_train = x
+    x_valid = {'x': valid_x.astype(np.float32), 'mean_prior': valid_mean_prior.astype(np.float32), 'y': labelToMat(valid_y).astype(np.float32)}
+    x_test = {'x': test_x.astype(np.float32), 'mean_prior': test_mean_prior.astype(np.float32), 'y': labelToMat(test_y).astype(np.float32)}
     L_valid = 1
     dim_input = (size,size)
-    n_x = size*size
+    n_x = x_train['x'].shape[0]
     n_y = 10
     type_qz = 'gaussianmarg'
     type_pz = 'gaussianmarg'
     nonlinear = 'softplus'
-    type_px = 'bernoulli'
+    type_px = 'gaussian'
     n_train = 12000
     n_test = 50000
     n_batch = 240
     colorImg = False
-    bernoulli_x = True
+    bernoulli_x = False
     byteToFloat = False
     weight_decay = float(n_batch)/n_train
     
@@ -257,29 +320,52 @@ def main(n_z, n_hidden, dataset, seed, comment, alpha, decay1, decay2, gfx=True)
     test_x = tmp['x_test'].T
     test_y = tmp['t_test'].T.astype(np.int32)
     
+    dir = 'models/mnist_back_image_rot_z_x_50-500-500_longrun/'
+    v = ndict.loadz(dir+'v_best.ndict.tar.gz')
+    train_x = infer1(train_x,v)
+    test_x = infer1(test_x,v)
+    valid_x = infer1(valid_x,v)
+    '''
+    # Test the features are right
+    print test_x.shape
+    print train_x.shape
+    print valid_x.shape
+    sio.savemat(logdir+'latent.mat', {'z_test': test_x, 'z_train': train_x})
+    exit()
+    '''
+    
     print train_x.shape
     print train_y.shape
     print test_x.shape
     print test_y.shape
     
     f_enc, f_dec = pp.Identity()
+    train_mean_prior = np.zeros((n_z,train_x.shape[1]))
+    test_mean_prior = np.zeros((n_z,test_x.shape[1]))
+    valid_mean_prior = np.zeros((n_z,valid_x.shape[1]))
+    '''
     x = {'x': train_x.astype(np.float32), 'y': labelToMat(train_y).astype(np.float32)}
     x_train = x
     x_valid = {'x': valid_x.astype(np.float32), 'y': labelToMat(valid_y).astype(np.float32)}
     x_test = {'x': test_x.astype(np.float32), 'y': labelToMat(test_y).astype(np.float32)}
+    '''
+    x = {'x': train_x.astype(np.float32), 'mean_prior': train_mean_prior.astype(np.float32), 'y': labelToMat(train_y).astype(np.float32)}
+    x_train = x
+    x_valid = {'x': valid_x.astype(np.float32), 'mean_prior': valid_mean_prior.astype(np.float32), 'y': labelToMat(valid_y).astype(np.float32)}
+    x_test = {'x': test_x.astype(np.float32), 'mean_prior': test_mean_prior.astype(np.float32), 'y': labelToMat(test_y).astype(np.float32)}
     L_valid = 1
     dim_input = (size,size)
-    n_x = size*size
+    n_x = x_train['x'].shape[0]
     n_y = 10
     type_qz = 'gaussianmarg'
     type_pz = 'gaussianmarg'
     nonlinear = 'softplus'
-    type_px = 'bernoulli'
+    type_px = 'gaussian'
     n_train = 12000
     n_test = 50000
     n_batch = 240
     colorImg = False
-    bernoulli_x = True
+    bernoulli_x = False
     byteToFloat = False
     weight_decay = float(n_batch)/n_train
     
@@ -383,7 +469,15 @@ def main(n_z, n_hidden, dataset, seed, comment, alpha, decay1, decay2, gfx=True)
     #dir = '/Users/dpkingma/results/gpulearn_z_x_svhn_pca_300-(500, 500)__1413904756/'
     color.printBlue('pre-training')
     if dataset == 'mnist':
-      dir = 'models/mnist_z_x_50-500-500_longrun/'
+      dir = 'models/mnist_z_x_50-500-500_stack_1000_longrun/'
+    elif dataset == 'mnist_rot':
+      dir = 'models/mnist_rot_z_x_50-500-500_stack_1000_longrun/'
+    elif dataset == 'mnist_back_rand':
+      dir = 'models/mnist_back_rand_z_x_50-500-500_stack_1000_longrun/'
+    elif dataset == 'mnist_back_image':
+      dir = 'models/mnist_back_image_z_x_50-500-500_stack_1000_longrun/'
+    elif dataset == 'mnist_back_image_rot':
+      dir = 'models/mnist_back_image_rot_z_x_50-500-500_stack_1000_longrun/'
     elif dataset == 'svhn':
       dir = 'models/svhn_z_x_pca_300-500-500/'
     w = ndict.loadz(dir+'w_best.ndict.tar.gz')
@@ -434,6 +528,7 @@ def main(n_z, n_hidden, dataset, seed, comment, alpha, decay1, decay2, gfx=True)
         
       if 'pca' not in dataset and 'random' not in dataset and 'normalized' not in dataset:
         
+        '''
         if 'w0' in v:
           image = paramgraphics.mat_to_img(f_dec(v['w0'][:].T), dim_input, True, colorImg=colorImg)
           image.save(logdir+'q_w0'+tail, 'PNG')
@@ -444,7 +539,7 @@ def main(n_z, n_hidden, dataset, seed, comment, alpha, decay1, decay2, gfx=True)
         if 'out_unif' in w:
           image = paramgraphics.mat_to_img(f_dec(w['out_unif'].reshape((-1,1))), dim_input, True, colorImg=colorImg)
           image.save(logdir+'out_unif'+tail, 'PNG')
-        
+        '''
         if n_z == 2:
           n_width = 10
           import scipy.stats
@@ -462,8 +557,10 @@ def main(n_z, n_hidden, dataset, seed, comment, alpha, decay1, decay2, gfx=True)
         else:
           _x, _, _z_confab = model.gen_xz({}, {}, n_batch=144)
           x_samples = _z_confab['x']
+          '''
           image = paramgraphics.mat_to_img(f_dec(x_samples), dim_input, colorImg=colorImg)
           image.save(logdir+'samples-prior'+tail, 'PNG')
+          '''
           
           def infer(data, n_batch=1000):
             size = data['x'].shape[1]

@@ -110,10 +110,19 @@ def main(n_z, n_hidden, dataset, seed, comment, alpha, decay1, decay2, gfx=True)
     print test_y.shape
     
     f_enc, f_dec = pp.Identity()
+    train_mean_prior = np.zeros((n_z,train_x.shape[1]))
+    test_mean_prior = np.zeros((n_z,test_x.shape[1]))
+    valid_mean_prior = np.zeros((n_z,valid_x.shape[1]))
+    '''
     x = {'x': train_x.astype(np.float32), 'y': labelToMat(train_y).astype(np.float32)}
     x_train = x
     x_valid = {'x': valid_x.astype(np.float32), 'y': labelToMat(valid_y).astype(np.float32)}
     x_test = {'x': test_x.astype(np.float32), 'y': labelToMat(test_y).astype(np.float32)}
+    '''
+    x = {'x': train_x.astype(np.float32), 'mean_prior': train_mean_prior.astype(np.float32), 'y': labelToMat(train_y).astype(np.float32)}
+    x_train = x
+    x_valid = {'x': valid_x.astype(np.float32), 'mean_prior': valid_mean_prior.astype(np.float32), 'y': labelToMat(valid_y).astype(np.float32)}
+    x_test = {'x': test_x.astype(np.float32), 'mean_prior': test_mean_prior.astype(np.float32), 'y': labelToMat(test_y).astype(np.float32)}
     L_valid = 1
     dim_input = (size,size)
     n_x = size*size
@@ -152,10 +161,19 @@ def main(n_z, n_hidden, dataset, seed, comment, alpha, decay1, decay2, gfx=True)
     print test_y.shape
     
     f_enc, f_dec = pp.Identity()
+    train_mean_prior = np.zeros((n_z,train_x.shape[1]))
+    test_mean_prior = np.zeros((n_z,test_x.shape[1]))
+    valid_mean_prior = np.zeros((n_z,valid_x.shape[1]))
+    '''
     x = {'x': train_x.astype(np.float32), 'y': labelToMat(train_y).astype(np.float32)}
     x_train = x
     x_valid = {'x': valid_x.astype(np.float32), 'y': labelToMat(valid_y).astype(np.float32)}
     x_test = {'x': test_x.astype(np.float32), 'y': labelToMat(test_y).astype(np.float32)}
+    '''
+    x = {'x': train_x.astype(np.float32), 'mean_prior': train_mean_prior.astype(np.float32), 'y': labelToMat(train_y).astype(np.float32)}
+    x_train = x
+    x_valid = {'x': valid_x.astype(np.float32), 'mean_prior': valid_mean_prior.astype(np.float32), 'y': labelToMat(valid_y).astype(np.float32)}
+    x_test = {'x': test_x.astype(np.float32), 'mean_prior': test_mean_prior.astype(np.float32), 'y': labelToMat(test_y).astype(np.float32)}
     L_valid = 1
     dim_input = (size,size)
     n_x = size*size
@@ -194,10 +212,19 @@ def main(n_z, n_hidden, dataset, seed, comment, alpha, decay1, decay2, gfx=True)
     print test_y.shape
     
     f_enc, f_dec = pp.Identity()
+    train_mean_prior = np.zeros((n_z,train_x.shape[1]))
+    test_mean_prior = np.zeros((n_z,test_x.shape[1]))
+    valid_mean_prior = np.zeros((n_z,valid_x.shape[1]))
+    '''
     x = {'x': train_x.astype(np.float32), 'y': labelToMat(train_y).astype(np.float32)}
     x_train = x
     x_valid = {'x': valid_x.astype(np.float32), 'y': labelToMat(valid_y).astype(np.float32)}
     x_test = {'x': test_x.astype(np.float32), 'y': labelToMat(test_y).astype(np.float32)}
+    '''
+    x = {'x': train_x.astype(np.float32), 'mean_prior': train_mean_prior.astype(np.float32), 'y': labelToMat(train_y).astype(np.float32)}
+    x_train = x
+    x_valid = {'x': valid_x.astype(np.float32), 'mean_prior': valid_mean_prior.astype(np.float32), 'y': labelToMat(valid_y).astype(np.float32)}
+    x_test = {'x': test_x.astype(np.float32), 'mean_prior': test_mean_prior.astype(np.float32), 'y': labelToMat(test_y).astype(np.float32)}
     L_valid = 1
     dim_input = (size,size)
     n_x = size*size
@@ -236,10 +263,19 @@ def main(n_z, n_hidden, dataset, seed, comment, alpha, decay1, decay2, gfx=True)
     print test_y.shape
     
     f_enc, f_dec = pp.Identity()
+    train_mean_prior = np.zeros((n_z,train_x.shape[1]))
+    test_mean_prior = np.zeros((n_z,test_x.shape[1]))
+    valid_mean_prior = np.zeros((n_z,valid_x.shape[1]))
+    '''
     x = {'x': train_x.astype(np.float32), 'y': labelToMat(train_y).astype(np.float32)}
     x_train = x
     x_valid = {'x': valid_x.astype(np.float32), 'y': labelToMat(valid_y).astype(np.float32)}
     x_test = {'x': test_x.astype(np.float32), 'y': labelToMat(test_y).astype(np.float32)}
+    '''
+    x = {'x': train_x.astype(np.float32), 'mean_prior': train_mean_prior.astype(np.float32), 'y': labelToMat(train_y).astype(np.float32)}
+    x_train = x
+    x_valid = {'x': valid_x.astype(np.float32), 'mean_prior': valid_mean_prior.astype(np.float32), 'y': labelToMat(valid_y).astype(np.float32)}
+    x_test = {'x': test_x.astype(np.float32), 'mean_prior': test_mean_prior.astype(np.float32), 'y': labelToMat(test_y).astype(np.float32)}
     L_valid = 1
     dim_input = (size,size)
     n_x = size*size
@@ -357,6 +393,14 @@ def main(n_z, n_hidden, dataset, seed, comment, alpha, decay1, decay2, gfx=True)
     color.printBlue('pre-training')
     if dataset == 'mnist':
       dir = 'models/mnist_z_x_50-500-500_longrun/'
+    elif dataset == 'mnist_rot':
+      dir = 'models/mnist_rot_z_x_50-500-500_longrun/'
+    elif dataset == 'mnist_back_rand':
+      dir = 'models/mnist_back_rand_z_x_50-500-500_longrun/'
+    elif dataset == 'mnist_back_image':
+      dir = 'models/mnist_back_image_z_x_50-500-500_longrun/'
+    elif dataset == 'mnist_back_image_rot':
+      dir = 'models/mnist_back_image_rot_z_x_50-500-500_longrun/'
     elif dataset == 'svhn':
       dir = 'models/svhn_z_x_pca_300-500-500/'
     w = ndict.loadz(dir+'w_best.ndict.tar.gz')

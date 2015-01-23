@@ -29,7 +29,7 @@ def labelToMat(y):
         newy[i, y[i]] = 1
     return newy.T
 
-def main(n_z, n_hidden, dataset, seed, comment, gfx=True):
+def main(n_z, n_hidden, dataset, seed, comment, alpha, decay1, decay2, gfx=True):
   
   # Initialize logdir
   import time
@@ -344,11 +344,8 @@ def main(n_z, n_hidden, dataset, seed, comment, gfx=True):
     
   # Construct model
   from anglepy.models import GPUVAE_MM_Z_X
-  if os.environ.has_key("stepsize"):
-    learning_rate = float(os.environ["stepsize"])
-  else:
-    learning_rate = 3e-4
-  updates = get_adam_optimizer(learning_rate=learning_rate, weight_decay=weight_decay)
+  
+  updates = get_adam_optimizer(learning_rate=alpha,decay1=decay1, decay2=decay2, weight_decay=weight_decay)
   model = GPUVAE_MM_Z_X(updates, n_x, n_y, n_hidden, n_z, n_hidden[::-1], nonlinear, nonlinear, type_px, type_qz=type_qz, type_pz=type_pz, prior_sd=100, init_sd=1e-3)
   
   if os.environ.has_key('pretrain') and bool(os.environ['pretrain']) == True:
@@ -357,6 +354,7 @@ def main(n_z, n_hidden, dataset, seed, comment, gfx=True):
     #dir = '/Users/dpkingma/results/learn_z_x_svhn_bernoulli_300-(1000, 1000)_l1l2_sharing_and_1000HU_1412695481/'
     #dir = '/Users/dpkingma/results/learn_z_x_mnist_binarized_50-(500, 500)_mog_1412695455/'
     #dir = '/Users/dpkingma/results/gpulearn_z_x_svhn_pca_300-(500, 500)__1413904756/'
+    color.printBlue('pre-training')
     if dataset == 'mnist':
       dir = 'models/mnist_z_x_50-500-500_longrun/'
     elif dataset == 'svhn':
@@ -367,8 +365,9 @@ def main(n_z, n_hidden, dataset, seed, comment, gfx=True):
     ndict.set_value2(model.v, v)
   
   # Some statistics for optimization
-  ll_valid_stats = [-1e99, 0]
-  predy_valid_stats = [0, 0]
+  ll_valid_stats = [-1e99, 0, 0]
+  predy_valid_stats = [1, 0, 0, 0]
+  predy_test_stats = [0, 1, 0]
   
   # Progress hook
   def hook(epoch, t, ll):
@@ -385,6 +384,7 @@ def main(n_z, n_hidden, dataset, seed, comment, gfx=True):
     if ll_valid > ll_valid_stats[0]:
       ll_valid_stats[0] = ll_valid
       ll_valid_stats[1] = 0
+      ll_valid_stats[2] = epoch
       ndict.savez(ndict.get_value(model.v), logdir+'v_best')
       ndict.savez(ndict.get_value(model.w), logdir+'w_best')
     else:
@@ -486,9 +486,35 @@ def main(n_z, n_hidden, dataset, seed, comment, gfx=True):
           (z_valid, pred_valid,_z_valid) = infer(x_valid)
           (z_train, pred_train, _z_train) = infer(x_train)
           
+          pre_valid = evaluate(x_valid, pred_valid)
+          pre_test = evaluate(x_test, pred_test)
+          
+          if pre_valid < predy_valid_stats[0]:
+            predy_valid_stats[0] = pre_valid
+            predy_valid_stats[1] = pre_test
+            predy_valid_stats[2] = epoch
+            predy_valid_stats[3] = 0
+          
+            ndict.savez(ndict.get_value(model.v), logdir+'v_best_predy')
+            ndict.savez(ndict.get_value(model.w), logdir+'w_best_predy')
+          else:
+            predy_valid_stats[3] += 1
+            # Stop when not improving validation set performance in 100 iterations
+            if predy_valid_stats[3] > 100:
+              print "Finished"
+              with open(logdir+'hook.txt', 'a') as f:
+                print >>f, "Finished"
+              exit()
+          if pre_test < predy_test_stats[1]:
+            predy_test_stats[0] = pre_valid
+            predy_test_stats[1] = pre_test
+            predy_test_stats[2] = epoch
+          
+          
           print 'c = ', model.param_c.get_value()
-          print 'epoch', epoch, 't', t, 'll', ll, 'll_valid', ll_valid, ll_valid_stats
+          print 'epoch', epoch, 't', t, 'll', ll, 'll_valid', ll_valid, 'valid_stats', ll_valid_stats
           print 'train_err = ', evaluate(x_train, pred_train), 'valid_err = ', evaluate(x_valid, pred_valid), 'test_err = ', evaluate(x_test, pred_test)
+          print '--best: predy_valid_stats', predy_valid_stats, 'predy_test_stats', predy_test_stats
           with open(logdir+'hook.txt', 'a') as f:
             print >>f, 'epoch', epoch, 't', t, 'll', ll, 'll_valid', ll_valid, ll_valid_stats
             print >>f, 'train_err = ', evaluate(x_train, pred_train), 'valid_err = ', evaluate(x_valid, pred_valid), 'test_err = ', evaluate(x_test, pred_test)
@@ -496,21 +522,7 @@ def main(n_z, n_hidden, dataset, seed, comment, gfx=True):
         
         
         
-        pre_valid = evaluate(x_valid, pred_valid)
-        if pre_valid > predy_valid_stats[0]:
-          predy_valid_stats[0] = pre_valid
-          predy_valid_stats[1] = 0
-          ndict.savez(ndict.get_value(model.v), logdir+'v_best_predy')
-          ndict.savez(ndict.get_value(model.w), logdir+'w_best_predy')
-        else:
-          predy_valid_stats[1] += 1
-          # Stop when not improving validation set performance in 100 iterations
-          if predy_valid_stats[1] > 1000:
-            print "Finished"
-            with open(logdir+'hook.txt', 'a') as f:
-              print >>f, "Finished"
-            exit()
-          
+        
         
           #x_samples = _x['x']
           #image = paramgraphics.mat_to_img(x_samples, dim_input, colorImg=colorImg)
@@ -603,7 +615,6 @@ def get_adam_optimizer(learning_rate=0.001, decay1=0.1, decay2=0.001, weight_dec
     lr_t = learning_rate * T.sqrt(fix2) / fix1
     
     for i in w:
-  
       gi = g[i]
       if weight_decay > 0:
         gi -= weight_decay * w[i] #T.tanh(w[i])

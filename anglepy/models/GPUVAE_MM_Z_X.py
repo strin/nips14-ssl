@@ -54,23 +54,39 @@ class GPUVAE_MM_Z_X(ap.GPUVAEModel):
         self.sv = 0
         if os.environ.has_key('sv'):
           self.sv = int(os.environ['sv'])
-          color.printBlue('apply supervision: ' + str(self.sv))
+          color.printBlue('apply supervision from layer ' + str(self.sv+1) + ' to end.')
+        self.super_to_mean = False
+        if os.environ.has_key('super_to_mean') and bool(int(os.environ['super_to_mean'])) == True:
+          self.super_to_mean = True
+          color.printBlue('apply supervision to z_mean.')
+        self.train_residual = False
+        if os.environ.has_key('train_residual') and bool(int(os.environ['train_residual'])) == True:
+          self.train_residual = True
+          color.printBlue('Train residual wrt prior instead of the whole model.')
         self.Lambda = 0
         if os.environ.has_key('Lambda'):
           self.Lambda = float(os.environ['Lambda'])
+        self.sigma_square = 1
+        if os.environ.has_key('sigma_square'):
+          self.sigma_square = float(os.environ['sigma_square'])
         if os.environ.has_key('dropout'):
-          self.dropout = bool(os.environ['dropout'])
-        color.printBlue('c = ' + str(self.c) + ' , ell = ' + str(self.ell))
+          self.dropout = bool(int(os.environ['dropout']))
+        color.printBlue('c = ' + str(self.c) + ' , ell = ' + str(self.ell) + ' , sigma_square = ' + str(self.sigma_square))
 
+        
         # Init weights
         v, w = self.init_w(1e-2)
         for i in v: v[i] = shared32(v[i])
         for i in w: w[i] = shared32(w[i])
-        W = shared32(np.zeros((sum(n_hidden_q[self.sv:])+1, n_y)))
+        if not self.super_to_mean:
+            W = shared32(np.zeros((sum(n_hidden_q[self.sv:])+1, n_y)))
+            print 'apply supervision from', self.sv+1, ' to end.'
+        else:
+            W = shared32(np.zeros((n_z+1, n_y)))
+            print 'apply supervison to z_mean'
         
         self.v = v
         self.v['W'] = W
-        print 'layers with supervision: ', self.sv
         print 'dimension of the prediction model: ', self.v['W'].get_value().shape
         self.w = w
         
@@ -130,7 +146,10 @@ class GPUVAE_MM_Z_X(ap.GPUVAEModel):
         #print 'x', x['mean_prior'].type
         #print 'T', (T.dot(v['mean_w'], hidden_q[-1]) + T.dot(v['mean_b'], A)).type
         
-        q_mean = x['mean_prior'] + T.dot(v['mean_w'], hidden_q[-1]) + T.dot(v['mean_b'], A)
+        if not self.train_residual:
+            q_mean = T.dot(v['mean_w'], hidden_q[-1]) + T.dot(v['mean_b'], A)
+        else:
+            q_mean = x['mean_prior'] + T.dot(v['mean_w'], hidden_q[-1]) + T.dot(v['mean_b'], A)
         #q_mean = T.dot(v['mean_w'], hidden_q[-1]) + T.dot(v['mean_b'], A)
         
         if self.type_qz == 'gaussian' or self.type_qz == 'gaussianmarg':
@@ -138,7 +157,6 @@ class GPUVAE_MM_Z_X(ap.GPUVAEModel):
         else: raise Exception()
         
         ell = cast32(self.ell)
-        
         self.param_c = shared32(0)
         sv = self.sv
 
@@ -147,10 +165,15 @@ class GPUVAE_MM_Z_X(ap.GPUVAEModel):
         
         def activate():
             res = 0
-            lenw = len(v['W'].get_value())
-            for (hi, hidden) in enumerate(hidden_q[1+sv:]):
-                res += T.dot(v['W'][sum(self.n_hidden_q[sv:sv+hi]):sum(self.n_hidden_q[sv:sv+hi+1]),:].T, hidden)
-            res += T.dot(v['W'][lenw-1:lenw,:].T, A)
+            if self.super_to_mean:
+                lenw = len(v['W'].get_value())
+                res += T.dot(v['W'][:-1,:].T, q_mean)
+                res += T.dot(v['W'][lenw-1:lenw,:].T, A)
+            else:
+                lenw = len(v['W'].get_value())
+                for (hi, hidden) in enumerate(hidden_q[1+sv:]):
+                    res += T.dot(v['W'][sum(self.n_hidden_q[sv:sv+hi]):sum(self.n_hidden_q[sv:sv+hi+1]),:].T, hidden)
+                res += T.dot(v['W'][lenw-1:lenw,:].T, A)
             return res
         predy = T.argmax(activate(), axis=0)
 
@@ -208,7 +231,10 @@ class GPUVAE_MM_Z_X(ap.GPUVAEModel):
         
         # log p(z) (prior of z)
         if self.type_pz == 'gaussianmarg':
-            logpz = -0.5 * (np.log(2 * np.pi) + (q_mean**2 + T.exp(q_logvar))).sum(axis=0, keepdims=True)
+            if not self.train_residual:
+                logpz = -0.5 * (np.log(2 * np.pi * self.sigma_square) + ((q_mean-x['mean_prior'])**2 + T.exp(q_logvar))/self.sigma_square).sum(axis=0, keepdims=True)
+            else:
+                logpz = -0.5 * (np.log(2 * np.pi) + (q_mean**2 + T.exp(q_logvar))).sum(axis=0, keepdims=True)
         elif self.type_pz == 'gaussian':
             logpz = ap.logpdfs.standard_normal(_z).sum(axis=0, keepdims=True)
         elif self.type_pz == 'mog':

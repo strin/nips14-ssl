@@ -56,10 +56,17 @@ def main(n_z, n_hidden, dataset, seed, comment, alpha, decay1, decay2, gfx=True)
     train_x, train_y, valid_x, valid_y, test_x, test_y = mnist.load_numpy(size)
     f_enc, f_dec = pp.Identity()
     
-    
-    train_mean_prior = np.zeros((n_z,train_x.shape[1]))
-    test_mean_prior = np.zeros((n_z,test_x.shape[1]))
-    valid_mean_prior = np.zeros((n_z,valid_x.shape[1]))
+    if os.environ.has_key('prior') and bool(int(os.environ['prior'])) == True:
+        color.printBlue('Loading prior')
+        mnist_prior = sio.loadmat('data/mnist_prior/mnist_prior.mat')
+        train_mean_prior = mnist_prior['z_train']
+        test_mean_prior = mnist_prior['z_test']
+        valid_mean_prior = mnist_prior['z_valid']
+    else:
+        train_mean_prior = np.zeros((n_z,train_x.shape[1]))
+        test_mean_prior = np.zeros((n_z,test_x.shape[1]))
+        valid_mean_prior = np.zeros((n_z,valid_x.shape[1]))
+        
     '''
     x = {'x': train_x.astype(np.float32), 'y': labelToMat(train_y).astype(np.float32)}
     x_train = x
@@ -384,7 +391,7 @@ def main(n_z, n_hidden, dataset, seed, comment, alpha, decay1, decay2, gfx=True)
   updates = get_adam_optimizer(learning_rate=alpha,decay1=decay1, decay2=decay2, weight_decay=weight_decay)
   model = GPUVAE_MM_Z_X(updates, n_x, n_y, n_hidden, n_z, n_hidden[::-1], nonlinear, nonlinear, type_px, type_qz=type_qz, type_pz=type_pz, prior_sd=100, init_sd=1e-3)
   
-  if os.environ.has_key('pretrain') and bool(os.environ['pretrain']) == True:
+  if os.environ.has_key('pretrain') and bool(int(os.environ['pretrain'])) == True:
     #dir = '/Users/dpkingma/results/learn_z_x_mnist_binarized_50-(500, 500)_mog_1412689061/'
     #dir = '/Users/dpkingma/results/learn_z_x_svhn_bernoulli_300-(1000, 1000)_l1l2_sharing_and_1000HU_1412676966/'
     #dir = '/Users/dpkingma/results/learn_z_x_svhn_bernoulli_300-(1000, 1000)_l1l2_sharing_and_1000HU_1412695481/'
@@ -392,15 +399,15 @@ def main(n_z, n_hidden, dataset, seed, comment, alpha, decay1, decay2, gfx=True)
     #dir = '/Users/dpkingma/results/gpulearn_z_x_svhn_pca_300-(500, 500)__1413904756/'
     color.printBlue('pre-training')
     if dataset == 'mnist':
-      dir = 'models/mnist_z_x_50-500-500_longrun/'
+      dir = 'models/mnist_z_x_'+str(n_z)+'-500-500_longrun/'
     elif dataset == 'mnist_rot':
-      dir = 'models/mnist_rot_z_x_50-500-500_longrun/'
+      dir = 'models/mnist_rot_z_x_'+str(n_z)+'-500-500_longrun/'
     elif dataset == 'mnist_back_rand':
-      dir = 'models/mnist_back_rand_z_x_50-500-500_longrun/'
+      dir = 'models/mnist_back_rand_z_x_'+str(n_z)+'-500-500_longrun/'
     elif dataset == 'mnist_back_image':
-      dir = 'models/mnist_back_image_z_x_50-500-500_longrun/'
+      dir = 'models/mnist_back_image_z_x_'+str(n_z)+'-500-500_longrun/'
     elif dataset == 'mnist_back_image_rot':
-      dir = 'models/mnist_back_image_rot_z_x_50-500-500_longrun/'
+      dir = 'models/mnist_back_image_rot_z_x_'+str(n_z)+'-500-500_longrun/'
     elif dataset == 'svhn':
       dir = 'models/svhn_z_x_pca_300-500-500/'
     w = ndict.loadz(dir+'w_best.ndict.tar.gz')
@@ -424,6 +431,9 @@ def main(n_z, n_hidden, dataset, seed, comment, alpha, decay1, decay2, gfx=True)
     # Log
     ndict.savez(ndict.get_value(model.v), logdir+'v')
     ndict.savez(ndict.get_value(model.w), logdir+'w')
+    
+    if True:
+        ndict.get_value
     
     if ll_valid > ll_valid_stats[0]:
       ll_valid_stats[0] = ll_valid
@@ -544,7 +554,7 @@ def main(n_z, n_hidden, dataset, seed, comment, alpha, decay1, decay2, gfx=True)
           else:
             predy_valid_stats[3] += 1
             # Stop when not improving validation set performance in 100 iterations
-            if predy_valid_stats[3] > 100:
+            if predy_valid_stats[3] > 10000 and model.param_c.get_value() > 0:
               print "Finished"
               with open(logdir+'hook.txt', 'a') as f:
                 print >>f, "Finished"

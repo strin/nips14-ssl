@@ -1,9 +1,11 @@
 import numpy as np
+import sys, os
 import theano
 import theano.tensor as T
 import collections as C
 import anglepy as ap
 import anglepy.ndict as ndict
+import color
 from anglepy.misc import lazytheanofunc
 
 import math, inspect
@@ -12,7 +14,8 @@ import math, inspect
 
 def shared32(x, name=None, borrow=False):
     return theano.shared(np.asarray(x, dtype='float32'), name=name, borrow=borrow)
-
+def cast32(x):
+    return T.cast(x, dtype='float32')
 '''
 Fully connected deep variational auto-encoder (VAE_Z_X)
 '''
@@ -35,6 +38,16 @@ class GPUVAE_Z_X(ap.GPUVAEModel):
         self.var_smoothing = var_smoothing
         self.n_mixture = n_mixture
         
+        self.train_residual = False
+        if os.environ.has_key('train_residual') and bool(int(os.environ['train_residual'])) == True:
+          self.train_residual = True
+          color.printBlue('Train residual wrt prior instead of the whole model.')
+          
+        self.sigma_square = 1
+        if os.environ.has_key('sigma_square'):
+          self.sigma_square = float(os.environ['sigma_square'])
+        color.printBlue('Sigma_square of the prior:', self.sigma_square)
+          
         # Init weights
         v, w = self.init_w(1e-2)
         for i in v: v[i] = shared32(v[i])
@@ -86,15 +99,19 @@ class GPUVAE_Z_X(ap.GPUVAEModel):
             if self.dropout:
                 hidden_q[-1] *= 2. * (rng.uniform(size=hidden_q[-1].shape, dtype='float32') > .5)
                 
-        q_mean = T.dot(v['mean_w'], hidden_q[-1]) + T.dot(v['mean_b'], A)
+        if not self.train_residual:
+            q_mean = T.dot(v['mean_w'], hidden_q[-1]) + T.dot(v['mean_b'], A)
+        else:
+            q_mean = x['mean_prior'] + T.dot(v['mean_w'], hidden_q[-1]) + T.dot(v['mean_b'], A)
+            
         if self.type_qz == 'gaussian' or self.type_qz == 'gaussianmarg':
             q_logvar = T.dot(v['logvar_w'], hidden_q[-1]) + T.dot(v['logvar_b'], A)
         else: raise Exception()
         
         # function for distribution q(z|x)
         theanofunc = lazytheanofunc('warn', mode='FAST_RUN')
-        self.dist_qz['z'] = theanofunc([x['x']] + [A], [q_mean, q_logvar])
-        self.dist_qz['hidden'] = theanofunc([x['x']] + [A], hidden_q[1:])
+        self.dist_qz['z'] = theanofunc([x['x'], x['mean_prior']] + [A], [q_mean, q_logvar])
+        self.dist_qz['hidden'] = theanofunc([x['x'], x['mean_prior']] + [A], hidden_q[1:])
         
         # Compute virtual sample
         eps = rng.normal(size=q_mean.shape, dtype='float32')
@@ -131,7 +148,10 @@ class GPUVAE_Z_X(ap.GPUVAEModel):
         
         # log p(z) (prior of z)
         if self.type_pz == 'gaussianmarg':
-            logpz = -0.5 * (np.log(2 * np.pi) + (q_mean**2 + T.exp(q_logvar))).sum(axis=0, keepdims=True)
+            if not self.train_residual:
+                logpz = -0.5 * (np.log(2 * np.pi * self.sigma_square) + ((q_mean-x['mean_prior'])**2 + T.exp(q_logvar))/self.sigma_square).sum(axis=0, keepdims=True)
+            else:
+                logpz = -0.5 * (np.log(2 * np.pi) + (q_mean**2 + T.exp(q_logvar))).sum(axis=0, keepdims=True)
         elif self.type_pz == 'gaussian':
             logpz = ap.logpdfs.standard_normal(_z).sum(axis=0, keepdims=True)
         elif self.type_pz == 'mog':
@@ -190,8 +210,8 @@ class GPUVAE_Z_X(ap.GPUVAEModel):
         # If x['x'] was given but not z['z']: generate z ~ q(z|x)
         if x.has_key('x') and not z.has_key('z'):
 
-            q_mean, q_logvar = self.dist_qz['z'](*([x['x']] + [A]))
-            q_hidden = self.dist_qz['hidden'](*([x['x']] + [A]))
+            q_mean, q_logvar = self.dist_qz['z'](*([x['x'], x['mean_prior']] + [A]))
+            q_hidden = self.dist_qz['hidden'](*([x['x'], x['mean_prior']] + [A]))
 
             _z['mean'] = q_mean
             _z['logvar'] = q_logvar
@@ -242,7 +262,7 @@ class GPUVAE_Z_X(ap.GPUVAEModel):
         z = {}
 
         # Define observed variables 'x'
-        x = {'x': T.fmatrix('x')}
+        x = {'x': T.fmatrix('x'), 'mean_prior': T.fmatrix('mean_prior'), }
         
         return x, z
     

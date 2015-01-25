@@ -15,6 +15,7 @@ import theano.tensor as T
 from collections import OrderedDict
 
 import preprocessing as pp
+import color
 
 def main(n_z, n_hidden, dataset, seed, comment, gfx=True):
   
@@ -41,10 +42,24 @@ def main(n_z, n_hidden, dataset, seed, comment, gfx=True):
     size = 28
     train_x, train_y, valid_x, valid_y, test_x, test_y = mnist.load_numpy(size)
     f_enc, f_dec = pp.Identity()
-    x = {'x': train_x.astype(np.float32)}
+    
+    if os.environ.has_key('prior') and bool(int(os.environ['prior'])) == True:
+        color.printBlue('Loading prior')
+        mnist_prior = sio.loadmat('data/mnist_prior/mnist_prior.mat')
+        train_mean_prior = mnist_prior['z_train']
+        test_mean_prior = mnist_prior['z_test']
+        valid_mean_prior = mnist_prior['z_valid']
+    else:
+        train_mean_prior = np.zeros((n_z,train_x.shape[1]))
+        test_mean_prior = np.zeros((n_z,test_x.shape[1]))
+        valid_mean_prior = np.zeros((n_z,valid_x.shape[1]))
+    
+    
+    x = {'x': train_x.astype(np.float32), 'mean_prior': train_mean_prior.astype(np.float32)}
     x_train = x
-    x_valid = {'x': valid_x.astype(np.float32)}
-    x_test = {'x': test_x.astype(np.float32)}
+    x_valid = {'x': valid_x.astype(np.float32), 'mean_prior': valid_mean_prior.astype(np.float32)}
+    x_test = {'x': test_x.astype(np.float32), 'mean_prior': test_mean_prior.astype(np.float32)}
+    
     L_valid = 1
     dim_input = (size,size)
     n_x = size*size
@@ -208,10 +223,10 @@ def main(n_z, n_hidden, dataset, seed, comment, gfx=True):
     print test_y.shape
     
     f_enc, f_dec = pp.Identity()
-    x = {'x': train_x.astype(np.float32), 'y': labelToMat(train_y).astype(np.float32)}
+    x = {'x': train_x.astype(np.float32)}
     x_train = x
-    x_valid = {'x': valid_x.astype(np.float32), 'y': labelToMat(valid_y).astype(np.float32)}
-    x_test = {'x': test_x.astype(np.float32), 'y': labelToMat(test_y).astype(np.float32)}
+    x_valid = {'x': valid_x.astype(np.float32)}
+    x_test = {'x': test_x.astype(np.float32)}
     L_valid = 1
     dim_input = (size,size)
     n_x = size*size
@@ -516,7 +531,8 @@ def main(n_z, n_hidden, dataset, seed, comment, gfx=True):
             size = data['x'].shape[1]
             res = np.zeros((sum(n_hidden), size))
             for i in range(0, size, n_batch):
-              x_batch = {'x': data['x'][:,i:i+n_batch].astype(np.float32)}
+              idx_to = min(size, i+n_batch)
+              x_batch = ndict.getCols(data, i, idx_to)
               _x, _z, _z_confab = model.gen_xz(x_batch, {}, n_batch)
               x_samples = _z_confab['x']
               for (hi, hidden) in enumerate(_z_confab['hidden']):

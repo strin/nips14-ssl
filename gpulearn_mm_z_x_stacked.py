@@ -461,7 +461,7 @@ def main(n_z, n_hidden, dataset, seed, comment, alpha, decay1, decay2, gfx=True)
   updates = get_adam_optimizer(learning_rate=alpha,decay1=decay1, decay2=decay2, weight_decay=weight_decay)
   model = GPUVAE_MM_Z_X(updates, n_x, n_y, n_hidden, n_z, n_hidden[::-1], nonlinear, nonlinear, type_px, type_qz=type_qz, type_pz=type_pz, prior_sd=100, init_sd=1e-3)
   
-  if os.environ.has_key('pretrain') and bool(os.environ['pretrain']) == True:
+  if os.environ.has_key('pretrain') and bool(int(os.environ['pretrain'])) == True:
     #dir = '/Users/dpkingma/results/learn_z_x_mnist_binarized_50-(500, 500)_mog_1412689061/'
     #dir = '/Users/dpkingma/results/learn_z_x_svhn_bernoulli_300-(1000, 1000)_l1l2_sharing_and_1000HU_1412676966/'
     #dir = '/Users/dpkingma/results/learn_z_x_svhn_bernoulli_300-(1000, 1000)_l1l2_sharing_and_1000HU_1412695481/'
@@ -624,7 +624,7 @@ def main(n_z, n_hidden, dataset, seed, comment, alpha, decay1, decay2, gfx=True)
           else:
             predy_valid_stats[3] += 1
             # Stop when not improving validation set performance in 100 iterations
-            if predy_valid_stats[3] > 100:
+            if predy_valid_stats[3] > 10000 and model.param_c.get_value() > 0:
               print "Finished"
               with open(logdir+'hook.txt', 'a') as f:
                 print >>f, "Finished"
@@ -676,7 +676,7 @@ def main(n_z, n_hidden, dataset, seed, comment, alpha, decay1, decay2, gfx=True)
   pass
 
 # Training loop for variational autoencoder
-def loop_va(model, doEpoch, hook, n_epochs=3001):
+def loop_va(model, doEpoch, hook, n_epochs=10001):
   
   t0 = time.time()
   ct = 1000

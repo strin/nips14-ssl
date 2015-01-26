@@ -21,7 +21,15 @@ def main(n_z, n_hidden, dataset, seed, comment, gfx=True):
   
   # Initialize logdir
   import time
-  logdir = 'results/gpulearn_z_x_'+dataset+'_'+str(n_z)+'-'+str(n_hidden)+'_'+comment+'_'+str(int(time.time()))+'/'
+  if os.environ.has_key('pretrain') and bool(int(os.environ['pretrain'])) == True:
+    comment+='_pre-train'
+  if os.environ.has_key('prior') and bool(int(os.environ['prior'])) == True:
+    comment+='_prior'
+  if os.environ.has_key('train_residual') and bool(int(os.environ['train_residual'])) == True:
+    comment+='_train-residual'
+  if os.environ.has_key('sigma_square'):
+    comment+=('_'+str(float(os.environ['sigma_square'])))
+  logdir = 'results/gpulearn_z_x_'+dataset+'_'+str(n_z)+'-'+str(n_hidden)+comment+'_'+str(int(time.time()))+'/'
   if not os.path.exists(logdir): os.makedirs(logdir)
   print 'logdir:', logdir
   print 'gpulearn_z_x', n_z, n_hidden, dataset, seed
@@ -522,14 +530,30 @@ def main(n_z, n_hidden, dataset, seed, comment, gfx=True):
           image = paramgraphics.mat_to_img(f_dec(_z['x']), dim_input)
           image.save(logdir+'2dmanifold'+tail, 'PNG')
         else:
-          _x, _, _z_confab = model.gen_xz({}, {}, n_batch=144)
-          x_samples = _z_confab['x']
+          if not(os.environ.has_key('train_residual') and bool(int(os.environ['train_residual'])) == True) and (os.environ.has_key('prior') and bool(int(os.environ['prior'])) == True):
+            nn_batch_nn = 144
+            mp_in = np.random.randint(0,x_train['mean_prior'].shape[1],nn_batch_nn)
+            m_p = x_train['mean_prior'][:,mp_in]
+            s_s = 1
+            if os.environ.has_key('sigma_square'):
+                s_s = float(os.environ['sigma_square'])
+            x_samples = model.gen_xz_prior({}, {}, m_p, s_s, n_batch=144)
+            m_p1 = (np.ones((n_z, nn_batch_nn)).T * np.mean(x_train['mean_prior'], axis = 1)).T
+            x_samples1 = model.gen_xz_prior({}, {}, m_p1.astype(np.float32), s_s, n_batch=144)
+            image = paramgraphics.mat_to_img(f_dec(x_samples1), dim_input, colorImg=colorImg)
+            image.save(logdir+'mean_samples-prior'+tail, 'PNG')
+          else:
+            _x, _, _z_confab = model.gen_xz({}, {}, n_batch=144)
+            x_samples = _z_confab['x']
           image = paramgraphics.mat_to_img(f_dec(x_samples), dim_input, colorImg=colorImg)
           image.save(logdir+'samples-prior'+tail, 'PNG')
           
           def infer(data, n_batch=1000):
             size = data['x'].shape[1]
             res = np.zeros((sum(n_hidden), size))
+            res1 = np.zeros((n_z,size))
+            res2 = np.zeros((n_hidden[-1],size))
+            res3 = np.zeros((n_z,size))
             for i in range(0, size, n_batch):
               idx_to = min(size, i+n_batch)
               x_batch = ndict.getCols(data, i, idx_to)
@@ -537,12 +561,26 @@ def main(n_z, n_hidden, dataset, seed, comment, gfx=True):
               x_samples = _z_confab['x']
               for (hi, hidden) in enumerate(_z_confab['hidden']):
                 res[sum(n_hidden[:hi]):sum(n_hidden[:hi+1]),i:i+n_batch] = hidden
-            return res
-
-          z_test = infer(x_test)
-          z_train = infer(x_train)
-
-          sio.savemat(logdir+'latent.mat', {'z_test': z_test, 'z_train': z_train})
+              res1[:,i:i+n_batch] = _z_confab['mean']
+              res2[:,i:i+n_batch] = _z_confab['hidden'][-1]
+              res3[:,i:i+n_batch] = _z_confab['logvar']
+            return res, res1, res2, res3
+          
+          z_test, z_test1, z_test2, vv_test = infer(x_test)
+          z_train, z_train1, z_train2, vv_train = infer(x_train)
+          
+          l_t, px_t, pz_t, qz_t = model.test(x_train, n_samples=1, n_batch=n_batch, byteToFloat=byteToFloat)
+          print 'Elogpx', px_t, 'Elogpz', pz_t, '-Elogqz', qz_t
+          #sigma_square = float(os.environ['sigma_square'])
+          print 'var', np.mean(np.exp(vv_train)), 'q', np.mean(np.abs(z_train1)), 'p', np.mean(np.abs(train_mean_prior)), 'd', np.mean(np.abs(z_train1-train_mean_prior))
+          with open(logdir+'hook.txt', 'a') as f:
+            print >>f, 'Elogpx', px_t, 'Elogpz', pz_t, '-Elogqz', qz_t
+            print >>f, 'var', np.mean(np.exp(vv_train)), 'q', np.mean(np.abs(z_train1)), 'p', np.mean(np.abs(train_mean_prior)), 'd', np.mean(np.abs(z_train1-train_mean_prior))
+          
+          
+          sio.savemat(logdir+'full_latent.mat', {'z_test': z_test, 'z_train': z_train})
+          sio.savemat(logdir+'mean_latent.mat', {'z_test': z_test1, 'z_train': z_train1})
+          sio.savemat(logdir+'last_latent.mat', {'z_test': z_test2, 'z_train': z_train2})
 
           #x_samples = _x['x']
           #image = paramgraphics.mat_to_img(x_samples, dim_input, colorImg=colorImg)
@@ -574,7 +612,7 @@ def main(n_z, n_hidden, dataset, seed, comment, gfx=True):
   pass
 
 # Training loop for variational autoencoder
-def loop_va(doEpoch, hook, n_epochs=9999999):
+def loop_va(doEpoch, hook, n_epochs=10001):
   
   t0 = time.time()
   for t in xrange(1, n_epochs):

@@ -151,7 +151,7 @@ class GPUVAE_Z_X(ap.GPUVAEModel):
             if not self.train_residual:
                 logpz = -0.5 * (np.log(2 * np.pi * self.sigma_square) + ((q_mean-x['mean_prior'])**2 + T.exp(q_logvar))/self.sigma_square).sum(axis=0, keepdims=True)
             else:
-                logpz = -0.5 * (np.log(2 * np.pi) + (q_mean**2 + T.exp(q_logvar))).sum(axis=0, keepdims=True)
+                logpz = -0.5 * (np.log(2 * np.pi * self.sigma_square) + (q_mean**2 + T.exp(q_logvar))/self.sigma_square).sum(axis=0, keepdims=True)
         elif self.type_pz == 'gaussian':
             logpz = ap.logpdfs.standard_normal(_z).sum(axis=0, keepdims=True)
         elif self.type_pz == 'mog':
@@ -209,7 +209,7 @@ class GPUVAE_Z_X(ap.GPUVAEModel):
 
         # If x['x'] was given but not z['z']: generate z ~ q(z|x)
         if x.has_key('x') and not z.has_key('z'):
-
+            
             q_mean, q_logvar = self.dist_qz['z'](*([x['x'], x['mean_prior']] + [A]))
             q_hidden = self.dist_qz['hidden'](*([x['x'], x['mean_prior']] + [A]))
 
@@ -256,6 +256,33 @@ class GPUVAE_Z_X(ap.GPUVAEModel):
         else: raise Exception("")
         
         return x, z, _z
+        
+    # Generate variables
+    def gen_xz_prior(self, x, z, mean_prior, sigma_square, n_batch):
+        
+        x, z = ndict.ordereddicts((x, z))
+        
+        A = np.ones((1, n_batch)).astype(np.float32)
+        for i in z: z[i] = z[i].astype(np.float32)
+        for i in x: x[i] = x[i].astype(np.float32)
+        tmp = np.random.standard_normal(size=(self.n_z, n_batch)).astype(np.float32)
+        z['z'] = tmp * sigma_square + mean_prior
+        
+        if self.type_px == 'bernoulli':
+            p = self.dist_px['x'](*([z['z']] + [A]))
+            if not x.has_key('x'):
+                x['x'] = np.random.binomial(n=1,p=p)
+        elif self.type_px == 'bounded01' or self.type_px == 'gaussian':
+            x_mean, x_logvar = self.dist_px['x'](*([z['z']] + [A]))
+            if not x.has_key('x'):
+                x['x'] = np.random.normal(x_mean, np.exp(x_logvar/2))
+                if self.type_px == 'bounded01':
+                    x['x'] = np.maximum(np.zeros(x['x'].shape), x['x'])
+                    x['x'] = np.minimum(np.ones(x['x'].shape), x['x'])
+                    
+        else: raise Exception("")
+        
+        return x['x']
     
     def variables(self):
         

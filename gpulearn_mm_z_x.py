@@ -33,7 +33,18 @@ def main(n_z, n_hidden, dataset, seed, comment, alpha, decay1, decay2, gfx=True)
   
   # Initialize logdir
   import time
-  logdir = 'results/gpulearn_mm_z_x_'+dataset+'_'+str(n_z)+'-'+'_'.join(toStr(n_hidden))+'_'+comment+'_'+str(int(time.time()))+'/'
+  if os.environ.has_key('super_to_mean') and bool(int(os.environ['super_to_mean'])) == True:
+    comment+='_super-to-mean'
+  if os.environ.has_key('pretrain') and bool(int(os.environ['pretrain'])) == True:
+    comment+='_pre-train'
+  if os.environ.has_key('prior') and bool(int(os.environ['prior'])) == True:
+    comment+='_prior'
+  if os.environ.has_key('train_residual') and bool(int(os.environ['train_residual'])) == True:
+    comment+='_train-residual'
+  if os.environ.has_key('sigma_square'):
+    comment+=('_'+str(float(os.environ['sigma_square'])))
+    
+  logdir = 'results/gpulearn_mm_z_x_'+dataset+'_'+str(n_z)+'-'+'_'.join(toStr(n_hidden))+comment+'_'+str(int(time.time()))+'/'
   if not os.path.exists(logdir): os.makedirs(logdir)
   print 'logdir:', logdir
   print 'gpulearn_mm_z_x'
@@ -486,15 +497,31 @@ def main(n_z, n_hidden, dataset, seed, comment, alpha, decay1, decay2, gfx=True)
             x = 1 - _z['x']
           image = paramgraphics.mat_to_img(f_dec(_z['x']), dim_input)
           image.save(logdir+'2dmanifold'+tail, 'PNG')
-        else:
-          _x, _, _z_confab = model.gen_xz({}, {}, n_batch=144)
-          x_samples = _z_confab['x']
+        else: 
+          if not(os.environ.has_key('train_residual') and bool(int(os.environ['train_residual'])) == True) and (os.environ.has_key('prior') and bool(int(os.environ['prior'])) == True):
+            nn_batch_nn = 144
+            mp_in = np.random.randint(0,x_train['mean_prior'].shape[1],nn_batch_nn)
+            m_p = x_train['mean_prior'][:,mp_in]
+            s_s = 1
+            if os.environ.has_key('sigma_square'):
+                s_s = float(os.environ['sigma_square'])
+            x_samples = model.gen_xz_prior({}, {}, m_p, s_s, n_batch=144)
+            m_p1 = (np.ones((n_z, nn_batch_nn)).T * np.mean(x_train['mean_prior'], axis = 1)).T
+            x_samples1 = model.gen_xz_prior({}, {}, m_p1.astype(np.float32), s_s, n_batch=144)
+            image = paramgraphics.mat_to_img(f_dec(x_samples1), dim_input, colorImg=colorImg)
+            image.save(logdir+'mean_samples-prior'+tail, 'PNG')
+          else:
+            _x, _, _z_confab = model.gen_xz({}, {}, n_batch=144)
+            x_samples = _z_confab['x']
+            
           image = paramgraphics.mat_to_img(f_dec(x_samples), dim_input, colorImg=colorImg)
           image.save(logdir+'samples-prior'+tail, 'PNG')
           
           def infer(data, n_batch=1000):
             size = data['x'].shape[1]
             res = np.zeros((sum(n_hidden), size))
+            res3 = np.zeros((n_z,size))
+            res1 = np.zeros((n_z,size))
             predy = []
             for i in range(0, size, n_batch):
               idx_to = min(size, i+n_batch)
@@ -525,20 +552,31 @@ def main(n_z, n_hidden, dataset, seed, comment, alpha, decay1, decay2, gfx=True)
                       
               for (hi, hidden) in enumerate(_z_confab['hidden']):
                 res[sum(n_hidden[:hi]):sum(n_hidden[:hi+1]),i:i+n_batch] = hidden
+              res3[:,i:i+n_batch] = _z_confab['logvar']
+              res1[:,i:i+n_batch] = _z_confab['mean']
             stats = dict()
             
             if epoch == -1:
               print 'features: ', res.shape
             
-            return (res, predy, _z)
+            return (res, predy, _z, res1, res3)
 
           def evaluate(data, predy):
             y = np.argmax(data['y'], axis=0)
             return sum([int(yi != py) for (yi, py) in zip(y, predy)]) / float(len(predy))
 
-          (z_test, pred_test,_z_test) = infer(x_test)
-          (z_valid, pred_valid,_z_valid) = infer(x_valid)
-          (z_train, pred_train, _z_train) = infer(x_train)
+          (z_test, pred_test,_z_test,z_test1,vv_test) = infer(x_test)
+          (z_valid, pred_valid,_z_valid,z_valid1,vv_valid) = infer(x_valid)
+          (z_train, pred_train, _z_train,z_train1,vv_train) = infer(x_train)
+          
+          l_t, px_t, pz_t, qz_t = model.test(x_train, n_samples=1, n_batch=n_batch, byteToFloat=byteToFloat)
+
+          print 'Elogpx', px_t, 'Elogpz', pz_t, '-Elogqz', qz_t
+          #sigma_square = float(os.environ['sigma_square'])
+          print 'var', np.mean(np.exp(vv_train)), 'q', np.mean(np.abs(z_train1)), 'p', np.mean(np.abs(train_mean_prior)), 'd', np.mean(np.abs(z_train1-train_mean_prior))
+          with open(logdir+'hook.txt', 'a') as f:
+            print >>f, 'Elogpx', px_t, 'Elogpz', pz_t, '-Elogqz', qz_t
+            print >>f, 'var', np.mean(np.exp(vv_train)), 'q', np.mean(np.abs(z_train1)), 'p', np.mean(np.abs(train_mean_prior)), 'd', np.mean(np.abs(z_train1-train_mean_prior))
           
           pre_valid = evaluate(x_valid, pred_valid)
           pre_test = evaluate(x_test, pred_test)
@@ -606,7 +644,7 @@ def main(n_z, n_hidden, dataset, seed, comment, alpha, decay1, decay2, gfx=True)
   pass
 
 # Training loop for variational autoencoder
-def loop_va(model, doEpoch, hook, n_epochs=3001):
+def loop_va(model, doEpoch, hook, n_epochs=10001):
   
   t0 = time.time()
   ct = 1000

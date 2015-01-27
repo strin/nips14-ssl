@@ -240,9 +240,11 @@ class GPUVAE_Z_X(ap.GPUVAEModel):
         # Generate from p(x|z)
         
         if self.type_px == 'bernoulli':
+            print 'xz p'
             p = self.dist_px['x'](*([z['z']] + [A]))
             _z['x'] = p
             if not x.has_key('x'):
+                print 'xz ber'
                 x['x'] = np.random.binomial(n=1,p=p)
         elif self.type_px == 'bounded01' or self.type_px == 'gaussian':
             x_mean, x_logvar = self.dist_px['x'](*([z['z']] + [A]))
@@ -269,9 +271,7 @@ class GPUVAE_Z_X(ap.GPUVAEModel):
         z['z'] = tmp * sigma_square + mean_prior
         
         if self.type_px == 'bernoulli':
-            p = self.dist_px['x'](*([z['z']] + [A]))
-            if not x.has_key('x'):
-                x['x'] = np.random.binomial(n=1,p=p)
+            x['x'] = self.dist_px['x'](*([z['z']] + [A]))
         elif self.type_px == 'bounded01' or self.type_px == 'gaussian':
             x_mean, x_logvar = self.dist_px['x'](*([z['z']] + [A]))
             if not x.has_key('x'):
@@ -282,8 +282,28 @@ class GPUVAE_Z_X(ap.GPUVAEModel):
                     
         else: raise Exception("")
         
-        return x['x']
-    
+        return x
+        
+    def gen_xz_prior11(self, x, z, mean_prior, sigma_square, n_batch):
+        
+        x, z = ndict.ordereddicts((x, z))
+        A = np.ones((1, n_batch)).astype(np.float32)
+        z['z'] = mean_prior.astype(np.float32)
+        
+        if self.type_px == 'bernoulli':
+            x['x'] = self.dist_px['x'](*([z['z']] + [A]))
+        elif self.type_px == 'bounded01' or self.type_px == 'gaussian':
+            x_mean, x_logvar = self.dist_px['x'](*([z['z']] + [A]))
+            if not x.has_key('x'):
+                x['x'] = np.random.normal(x_mean, np.exp(x_logvar/2))
+                if self.type_px == 'bounded01':
+                    x['x'] = np.maximum(np.zeros(x['x'].shape), x['x'])
+                    x['x'] = np.minimum(np.ones(x['x'].shape), x['x'])
+                    
+        else: raise Exception("")
+        
+        return x
+        
     def variables(self):
         
         z = {}

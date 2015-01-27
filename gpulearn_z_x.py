@@ -538,10 +538,14 @@ def main(n_z, n_hidden, dataset, seed, comment, gfx=True):
             if os.environ.has_key('sigma_square'):
                 s_s = float(os.environ['sigma_square'])
             x_samples = model.gen_xz_prior({}, {}, m_p, s_s, n_batch=144)
+            x_samples = x_samples['x']
             m_p1 = (np.ones((n_z, nn_batch_nn)).T * np.mean(x_train['mean_prior'], axis = 1)).T
             x_samples1 = model.gen_xz_prior({}, {}, m_p1.astype(np.float32), s_s, n_batch=144)
-            image = paramgraphics.mat_to_img(f_dec(x_samples1), dim_input, colorImg=colorImg)
+            image = paramgraphics.mat_to_img(f_dec(x_samples1['x']), dim_input, colorImg=colorImg)
             image.save(logdir+'mean_samples-prior'+tail, 'PNG')
+            x_samples11 = model.gen_xz_prior11({}, {}, m_p, s_s, n_batch=144)
+            image = paramgraphics.mat_to_img(f_dec(x_samples11['x']), dim_input, colorImg=colorImg)
+            image.save(logdir+'prior-image'+tail, 'PNG')
           else:
             _x, _, _z_confab = model.gen_xz({}, {}, n_batch=144)
             x_samples = _z_confab['x']

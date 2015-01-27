@@ -32,6 +32,8 @@ def labelToMat(y):
 def main(n_z, n_hidden, dataset, seed, comment, alpha, decay1, decay2, gfx=True):
   
   # Initialize logdir
+  pre_dir = 'results/gpulearn_z_x_mnist_96-(500, 500)'
+  
   import time
   if os.environ.has_key('super_to_mean') and bool(int(os.environ['super_to_mean'])) == True:
     comment+='_super-to-mean'
@@ -39,10 +41,14 @@ def main(n_z, n_hidden, dataset, seed, comment, alpha, decay1, decay2, gfx=True)
     comment+='_pre-train'
   if os.environ.has_key('prior') and bool(int(os.environ['prior'])) == True:
     comment+='_prior'
+    pre_dir+='_prior'
   if os.environ.has_key('train_residual') and bool(int(os.environ['train_residual'])) == True:
     comment+='_train-residual'
+    pre_dir+='_train-residual'
   if os.environ.has_key('sigma_square'):
     comment+=('_'+str(float(os.environ['sigma_square'])))
+    pre_dir+=('_'+str(float(os.environ['sigma_square'])))
+  pre_dir+='/'
     
   logdir = 'results/gpulearn_mm_z_x_'+dataset+'_'+str(n_z)+'-'+'_'.join(toStr(n_hidden))+comment+'_'+str(int(time.time()))+'/'
   if not os.path.exists(logdir): os.makedirs(logdir)
@@ -421,8 +427,8 @@ def main(n_z, n_hidden, dataset, seed, comment, alpha, decay1, decay2, gfx=True)
       dir = 'models/mnist_back_image_rot_z_x_'+str(n_z)+'-500-500_longrun/'
     elif dataset == 'svhn':
       dir = 'models/svhn_z_x_pca_300-500-500/'
-    w = ndict.loadz(dir+'w_best.ndict.tar.gz')
-    v = ndict.loadz(dir+'v_best.ndict.tar.gz')
+    w = ndict.loadz(pre_dir+'w_best.ndict.tar.gz')
+    v = ndict.loadz(pre_dir+'v_best.ndict.tar.gz')
     ndict.set_value2(model.w, w)
     ndict.set_value2(model.v, v)
   
@@ -506,10 +512,15 @@ def main(n_z, n_hidden, dataset, seed, comment, alpha, decay1, decay2, gfx=True)
             if os.environ.has_key('sigma_square'):
                 s_s = float(os.environ['sigma_square'])
             x_samples = model.gen_xz_prior({}, {}, m_p, s_s, n_batch=144)
+            x_samples = x_samples['x']
             m_p1 = (np.ones((n_z, nn_batch_nn)).T * np.mean(x_train['mean_prior'], axis = 1)).T
             x_samples1 = model.gen_xz_prior({}, {}, m_p1.astype(np.float32), s_s, n_batch=144)
-            image = paramgraphics.mat_to_img(f_dec(x_samples1), dim_input, colorImg=colorImg)
+            image = paramgraphics.mat_to_img(f_dec(x_samples1['x']), dim_input, colorImg=colorImg)
             image.save(logdir+'mean_samples-prior'+tail, 'PNG')
+            x_samples11 = model.gen_xz_prior11({}, {}, m_p, s_s, n_batch=144)
+            image = paramgraphics.mat_to_img(f_dec(x_samples11['x']), dim_input, colorImg=colorImg)
+            image.save(logdir+'prior-image'+tail, 'PNG')
+            
           else:
             _x, _, _z_confab = model.gen_xz({}, {}, n_batch=144)
             x_samples = _z_confab['x']
@@ -570,10 +581,12 @@ def main(n_z, n_hidden, dataset, seed, comment, alpha, decay1, decay2, gfx=True)
           (z_train, pred_train, _z_train,z_train1,vv_train) = infer(x_train)
           
           l_t, px_t, pz_t, qz_t = model.test(x_train, n_samples=1, n_batch=n_batch, byteToFloat=byteToFloat)
-
+          
+          '''
           print 'Elogpx', px_t, 'Elogpz', pz_t, '-Elogqz', qz_t
           #sigma_square = float(os.environ['sigma_square'])
           print 'var', np.mean(np.exp(vv_train)), 'q', np.mean(np.abs(z_train1)), 'p', np.mean(np.abs(train_mean_prior)), 'd', np.mean(np.abs(z_train1-train_mean_prior))
+          '''
           with open(logdir+'hook.txt', 'a') as f:
             print >>f, 'Elogpx', px_t, 'Elogpz', pz_t, '-Elogqz', qz_t
             print >>f, 'var', np.mean(np.exp(vv_train)), 'q', np.mean(np.abs(z_train1)), 'p', np.mean(np.abs(train_mean_prior)), 'd', np.mean(np.abs(z_train1-train_mean_prior))
@@ -610,6 +623,7 @@ def main(n_z, n_hidden, dataset, seed, comment, alpha, decay1, decay2, gfx=True)
           with open(logdir+'hook.txt', 'a') as f:
             print >>f, 'epoch', epoch, 't', t, 'll', ll, 'll_valid', ll_valid, ll_valid_stats
             print >>f, 'train_err = ', evaluate(x_train, pred_train), 'valid_err = ', evaluate(x_valid, pred_valid), 'test_err = ', evaluate(x_test, pred_test)
+            print >>f, '--best: predy_valid_stats', predy_valid_stats, 'predy_test_stats', predy_test_stats
           sio.savemat(logdir+'latent.mat', {'z_test': z_test, 'z_train': z_train})
         
         
@@ -644,7 +658,7 @@ def main(n_z, n_hidden, dataset, seed, comment, alpha, decay1, decay2, gfx=True)
   pass
 
 # Training loop for variational autoencoder
-def loop_va(model, doEpoch, hook, n_epochs=10001):
+def loop_va(model, doEpoch, hook, n_epochs=3001):
   
   t0 = time.time()
   ct = 1000
